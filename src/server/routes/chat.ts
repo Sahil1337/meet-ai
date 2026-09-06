@@ -65,6 +65,10 @@ export function chatRouter(ctx: AppContext): Router {
         const result = await queue.run(async () => {
           queueWaitMs = Date.now() - startedAt;
           const decision = await decideMode(body, config, ctx.classify);
+          log.debug(
+            { request_id: req.id, mode: decision.mode, rule: decision.rule, detail: decision.detail ?? null },
+            'chat.route',
+          );
           res.setHeader('x-meetiq-mode', decision.mode);
           res.setHeader('x-meetiq-rule', decision.rule);
           if (!body.stream) return jsonCompletion(res, body, id, created, decision, abort.signal);

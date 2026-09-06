@@ -133,10 +133,7 @@ function renderCompletion(rec: Record<string, unknown>): string[] {
   lines.push(
     `${green(bold('Completed'))} ${rid(rec)}`,
     fields(
-      [
-        'Mode used',
-        `${magenta(str(rec['mode_used']))} ${gray(`(rule: ${str(rec['router_rule'])}${rec['router_detail'] ? ` ${str(rec['router_detail'])}` : ''})`)}`,
-      ],
+      ['Mode used', magenta(str(rec['mode_used']))],
       ['Tools', rec['tool_parse'] && rec['tool_parse'] !== 'none' ? str(rec['tool_parse']) : undefined],
       ['Tokens', `${str(rec['completion_tokens'])}${thinking > 0 ? ` (${thinking} thinking)` : ''}`],
       ['Speed', bold(white(`${str(rec['eval_tps'])} tok/s`))],
@@ -147,6 +144,18 @@ function renderCompletion(rec: Record<string, unknown>): string[] {
   if (rec['answer']) lines.push(`  ${field('Answer', white(oneLine(rec['answer'], 240)))}`);
   entries.push(lines.join('\n'));
   return entries;
+}
+
+/** Routed [id] / Mode · Rule · Detail (debug level: why adaptive picked fast or thinking) */
+function renderRoute(rec: Record<string, unknown>): string {
+  return [
+    `${blue(bold('Routed'))} ${rid(rec)}`,
+    fields(
+      ['Mode', magenta(str(rec['mode']))],
+      ['Rule', str(rec['rule'])],
+      ['Detail', rec['detail'] ? str(rec['detail']) : undefined],
+    ),
+  ].join('\n');
 }
 
 /** Failed [id] / Status · Time / Error */
@@ -161,6 +170,7 @@ function renderFailure(rec: Record<string, unknown>): string {
 /** Each renderer returns one or more entries; every entry gets its own timestamp. */
 const EVENT_RENDERERS: Record<string, (rec: Record<string, unknown>) => string | string[]> = {
   'chat.request': renderRequest,
+  'chat.route': renderRoute,
   'chat.completion': renderCompletion,
   'chat.completion failed': renderFailure,
 };
