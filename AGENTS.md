@@ -47,6 +47,7 @@ src/
     core/
       ollama.ts       native /api/chat client (stream + non-stream) + error mapping
       supervisor.ts   spawn/wait/restart/stop the managed `ollama serve`
+      keepawake.ts    periodic one-token touch so a laptop GPU never runtime-suspends
       mapping.ts      request validation (zod) and response builders, typed
                       against shared/types.ts
       router.ts       adaptive fast/thinking decision (rules 1-6)

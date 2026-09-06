@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { createApp } from './app.js';
 import { loadConfig } from './config.js';
+import { startKeepAwake } from './core/keepawake.js';
 import { HttpOllamaClient } from './core/ollama.js';
 import { OllamaSupervisor, preloadModel } from './core/supervisor.js';
 import { createLogger } from './util/logger.js';
@@ -20,7 +21,8 @@ async function main(): Promise<void> {
   else log.info({ url: config.OLLAMA_BASE_URL }, 'OLLAMA_MANAGED=false; using external Ollama');
   if (config.OLLAMA_PRELOAD) await preloadModel(client, config, log);
 
-  const { app } = createApp({ config, client, log, ...(supervisor ? { supervisor } : {}) });
+  const { app, ctx } = createApp({ config, client, log, ...(supervisor ? { supervisor } : {}) });
+  const stopKeepAwake = startKeepAwake(client, config, ctx.queue, log);
   const server = app.listen(config.PORT, () => {
     log.info(
       {
@@ -37,6 +39,7 @@ async function main(): Promise<void> {
   const shutdown = (signal: string) => {
     log.info({ signal }, 'shutting down');
     const force = setTimeout(() => process.exit(1), SHUTDOWN_GRACE_MS).unref();
+    stopKeepAwake();
     server.close(async () => {
       await supervisor?.stop();
       clearTimeout(force);

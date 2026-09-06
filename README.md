@@ -56,6 +56,26 @@ On an RTX 3050 with 4 GB of VRAM, Ollama's automatic memory fit reserves ~1 GB f
 
 The proxy sends `num_gpu`, `num_ctx` and the KV cache type on **every** request, including the router's classifier call, so Ollama never reloads the model between requests. If you see out-of-memory errors, lower `NUM_CTX` before lowering `NUM_GPU`. Sending images isn't supported — the vision encoder would need the VRAM headroom this config deliberately spends on layers.
 
+## Laptop GPUs: runtime power management
+
+On laptops the NVIDIA driver suspends the discrete GPU within a second of it going idle (runtime D3). If the GPU stays suspended for more than a few seconds while the model is resident, every following generation runs at about half speed until the model is reloaded. Measured on an RTX 3050 Laptop: 41 tok/s right after loading, 19.6 tok/s after 20 seconds idle, 41 again after a reload.
+
+The proxy detects this (`Runtime D3 status: Enabled` in `/proc/driver/nvidia/gpus/*/power`) and, with `GPU_KEEP_AWAKE=auto`, generates one token every `GPU_KEEP_AWAKE_MS` (5 s) whenever no request is running, which keeps the GPU active. It logs a warning at startup when it does this.
+
+The permanent fix is to stop the driver from suspending the GPU, which costs a few watts at idle. Until the next reboot:
+
+```bash
+echo on | sudo tee /sys/bus/pci/devices/0000:01:00.0/power/control
+```
+
+Permanently, as a udev rule (replace the PCI address with yours from `lspci | grep -i nvidia`):
+
+```bash
+echo 'ACTION=="add", SUBSYSTEM=="pci", ATTR{vendor}=="0x10de", ATTR{class}=="0x030000", ATTR{power/control}="on"' | sudo tee /etc/udev/rules.d/80-nvidia-no-runtime-pm.rules
+```
+
+With runtime PM off the proxy sees `Runtime D3 status: Disabled` and the keep-awake stays off.
+
 ## Configuration
 
 All settings are environment variables, validated at startup with [t3-env](https://env.t3.gg). `.env` in the working directory is loaded automatically.
@@ -78,6 +98,8 @@ All settings are environment variables, validated at startup with [t3-env](https
 | `NUM_GPU`                 | `34`                     | Layers on the GPU. `-1` = Ollama auto-fit.                                                                                                        |
 | `KV_CACHE_TYPE`           | `q8_0`                   | KV cache quantization for the child.                                                                                                              |
 | `FLASH_ATTENTION`         | `true`                   | Flash attention for the child.                                                                                                                    |
+| `GPU_KEEP_AWAKE`          | `auto`                   | `auto` touches the GPU periodically only when NVIDIA runtime D3 is enabled; `true`/`false` force it. See "Laptop GPUs".                           |
+| `GPU_KEEP_AWAKE_MS`       | `5000`                   | Interval between keep-awake touches.                                                                                                              |
 | `KEEP_ALIVE`              | `30m`                    | How long Ollama keeps the model loaded.                                                                                                           |
 | `MAX_PARALLEL`            | `2`                      | Proxy concurrency; must match Ollama's parallelism.                                                                                               |
 | `DEFAULT_MODE`            | `adaptive`               | `thinking`, `fast` or `adaptive` when the caller sends no `mode`.                                                                                 |

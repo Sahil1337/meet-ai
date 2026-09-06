@@ -35,6 +35,9 @@ function buildEnv(runtimeEnv: Record<string, string | undefined>) {
       KV_CACHE_TYPE: z.enum(['f16', 'q8_0', 'q4_0']).default('q8_0'),
       FLASH_ATTENTION: bool(true),
       KEEP_ALIVE: str('30m'),
+      /** auto = only when the NVIDIA driver reports runtime D3 power management. See README "Laptop GPUs". */
+      GPU_KEEP_AWAKE: z.enum(['auto', 'true', 'false']).default('auto'),
+      GPU_KEEP_AWAKE_MS: int(5000),
       MAX_PARALLEL: int(2),
 
       DEFAULT_MODE: z.enum(['thinking', 'fast', 'adaptive']).default('adaptive'),

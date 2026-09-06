@@ -64,6 +64,8 @@ export interface OllamaClient {
   ps(signal?: AbortSignal): Promise<OllamaRunningModel[]>;
   /** Load a model into memory without generating. */
   preload(model: string, options: OllamaOptions, keepAlive: string, signal?: AbortSignal): Promise<void>;
+  /** Generate a single token: the cheapest way to keep the GPU active. */
+  touch(model: string, options: OllamaOptions, keepAlive: string, signal?: AbortSignal): Promise<void>;
 }
 
 export class HttpOllamaClient implements OllamaClient {
@@ -101,6 +103,22 @@ export class HttpOllamaClient implements OllamaClient {
     const { res } = await this.request('GET', '/api/ps', undefined, signal);
     const body = (await res.json()) as { models?: OllamaRunningModel[] };
     return body.models ?? [];
+  }
+
+  async touch(model: string, options: OllamaOptions, keepAlive: string, signal?: AbortSignal): Promise<void> {
+    await this.request(
+      'POST',
+      '/api/generate',
+      {
+        model,
+        prompt: 'hi',
+        stream: false,
+        think: false,
+        options: { ...options, num_predict: 1 },
+        keep_alive: keepAlive,
+      },
+      signal,
+    );
   }
 
   async preload(model: string, options: OllamaOptions, keepAlive: string, signal?: AbortSignal): Promise<void> {
