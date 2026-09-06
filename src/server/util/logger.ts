@@ -24,13 +24,16 @@ const useColor = !process.env['NO_COLOR'];
 const paint = (code: string, text: string) => (useColor ? `\x1b[${code}m${text}\x1b[0m` : text);
 const dim = (t: string) => paint('2', t);
 const bold = (t: string) => paint('1', t);
-const blue = (t: string) => paint('34', t);
-const green = (t: string) => paint('32', t);
-const yellow = (t: string) => paint('33', t);
-const red = (t: string) => paint('31', t);
 const gray = (t: string) => paint('90', t);
-const magenta = (t: string) => paint('35', t);
-const cyan = (t: string) => paint('36', t);
+// Bright variants read well on both dark and light terminals.
+const blue = (t: string) => paint('94', t);
+const green = (t: string) => paint('92', t);
+const yellow = (t: string) => paint('93', t);
+const red = (t: string) => paint('91', t);
+const magenta = (t: string) => paint('95', t);
+const cyan = (t: string) => paint('96', t);
+const orange = (t: string) => paint('38;5;214', t);
+const white = (t: string) => paint('97', t);
 
 const LEVELS: Record<number, string> = {
   10: gray('TRACE'),
@@ -82,13 +85,13 @@ const oneLine = (v: unknown, max: number) => {
   const text = str(v).replace(/\s+/g, ' ').trim();
   return text.length > max ? `${text.slice(0, max)}…` : text;
 };
-const rid = (rec: Record<string, unknown>) => dim(`[${str(rec['request_id'])}]`);
-const field = (label: string, value: string) => `${dim(label + ':')} ${value}`;
+const rid = (rec: Record<string, unknown>) => gray(`[${str(rec['request_id'])}]`);
+const field = (label: string, value: string) => `${gray(label + ':')} ${value}`;
 const fields = (...pairs: Array<[label: string, value: string | undefined]>) =>
   `  ${pairs
     .filter((p): p is [string, string] => Boolean(p[1]))
     .map(([l, v]) => field(l, v))
-    .join(dim('  ·  '))}`;
+    .join(gray('  ·  '))}`;
 
 /** Request received [id] / Mode · Tools · Stream / Prompt */
 function renderRequest(rec: Record<string, unknown>): string {
@@ -96,14 +99,14 @@ function renderRequest(rec: Record<string, unknown>): string {
   const lines = [
     `${cyan(bold('Request received'))} ${rid(rec)}`,
     fields(
-      ['Mode', String(rec['mode_requested'] ?? 'adaptive')],
+      ['Mode', magenta(String(rec['mode_requested'] ?? 'adaptive'))],
       ['Tools', tools > 0 ? String(tools) : undefined],
       ['Format', rec['response_format'] ? str(rec['response_format']) : undefined],
       ['Stream', rec['stream'] ? 'yes' : undefined],
       ['Size', `~${str(rec['prompt_estimate'])} tokens`],
     ),
   ];
-  if (rec['prompt']) lines.push(`  ${field('Prompt', cyan(oneLine(rec['prompt'], 200)))}`);
+  if (rec['prompt']) lines.push(`  ${field('Prompt', white(oneLine(rec['prompt'], 200)))}`);
   return lines.join('\n');
 }
 
@@ -114,8 +117,8 @@ function renderCompletion(rec: Record<string, unknown>): string[] {
   for (const call of calls) {
     entries.push(
       [
-        `${yellow(bold('Tool call'))} ${rid(rec)}`,
-        `  ${field('Name', yellow(call.function.name))}${dim('  ·  ')}${field('Arguments', oneLine(call.function.arguments, 160))}`,
+        `${orange(bold('Tool call'))} ${rid(rec)}`,
+        `  ${field('Name', orange(call.function.name))}${gray('  ·  ')}${field('Arguments', oneLine(call.function.arguments, 160))}`,
       ].join('\n'),
     );
   }
@@ -132,16 +135,16 @@ function renderCompletion(rec: Record<string, unknown>): string[] {
     fields(
       [
         'Mode used',
-        `${str(rec['mode_used'])} ${dim(`(rule: ${str(rec['router_rule'])}${rec['router_detail'] ? ` ${str(rec['router_detail'])}` : ''})`)}`,
+        `${magenta(str(rec['mode_used']))} ${gray(`(rule: ${str(rec['router_rule'])}${rec['router_detail'] ? ` ${str(rec['router_detail'])}` : ''})`)}`,
       ],
       ['Tools', rec['tool_parse'] && rec['tool_parse'] !== 'none' ? str(rec['tool_parse']) : undefined],
       ['Tokens', `${str(rec['completion_tokens'])}${thinking > 0 ? ` (${thinking} thinking)` : ''}`],
-      ['Speed', `${str(rec['eval_tps'])} tok/s`],
+      ['Speed', bold(white(`${str(rec['eval_tps'])} tok/s`))],
       ['Time', secs(rec['total_ms'])],
     ),
   );
   if (flags.length) lines.push(`  ${field('Note', yellow(flags.join(', ')))}`);
-  if (rec['answer']) lines.push(`  ${field('Answer', green(oneLine(rec['answer'], 240)))}`);
+  if (rec['answer']) lines.push(`  ${field('Answer', white(oneLine(rec['answer'], 240)))}`);
   entries.push(lines.join('\n'));
   return entries;
 }
@@ -169,7 +172,7 @@ export function formatPretty(line: string): string {
   } catch {
     return line;
   }
-  const stamp = dim(clock(Number(rec['time'])));
+  const stamp = gray(clock(Number(rec['time'])));
   const msg = String(rec['msg'] ?? '');
 
   // Forwarded Ollama output: keep it on one dim line.
