@@ -82,54 +82,81 @@ const oneLine = (v: unknown, max: number) => {
   const text = str(v).replace(/\s+/g, ' ').trim();
   return text.length > max ? `${text.slice(0, max)}…` : text;
 };
-const indent = (text: string, colour: (t: string) => string = (t) => t) => `  ${colour(text)}`;
+const rid = (rec: Record<string, unknown>) => dim(`[${str(rec['request_id'])}]`);
+const field = (label: string, value: string) => `${dim(label + ':')} ${value}`;
+const fields = (...pairs: Array<[label: string, value: string | undefined]>) =>
+  `  ${pairs
+    .filter((p): p is [string, string] => Boolean(p[1]))
+    .map(([l, v]) => field(l, v))
+    .join(dim('  ·  '))}`;
 
-/** `▶ mode · 1 tool · stream` then the prompt on one indented line. */
+/** Request received [id] / Mode · Tools · Stream / Prompt */
 function renderRequest(rec: Record<string, unknown>): string {
-  const facts = [
-    String(rec['mode_requested'] ?? 'adaptive'),
-    Number(rec['tool_count'] ?? 0) > 0
-      ? `${str(rec['tool_count'])} tool${Number(rec['tool_count']) > 1 ? 's' : ''}`
-      : '',
-    rec['response_format'] ? str(rec['response_format']) : '',
-    rec['stream'] ? 'stream' : '',
-  ].filter(Boolean);
-  const lines = [`${cyan('▶')} ${cyan(facts.join(' · '))}`];
-  if (rec['prompt']) lines.push(indent(oneLine(rec['prompt'], 160)));
+  const tools = Number(rec['tool_count'] ?? 0);
+  const lines = [
+    `${cyan(bold('Request received'))} ${rid(rec)}`,
+    fields(
+      ['Mode', String(rec['mode_requested'] ?? 'adaptive')],
+      ['Tools', tools > 0 ? String(tools) : undefined],
+      ['Format', rec['response_format'] ? str(rec['response_format']) : undefined],
+      ['Stream', rec['stream'] ? 'yes' : undefined],
+      ['Size', `~${str(rec['prompt_estimate'])} tokens`],
+    ),
+  ];
+  if (rec['prompt']) lines.push(`  ${field('Prompt', cyan(oneLine(rec['prompt'], 200)))}`);
   return lines.join('\n');
 }
 
-/** `✔ mode · tokens · speed · time · flags` then tool calls and the answer, indented. */
-function renderCompletion(rec: Record<string, unknown>): string {
-  const thinking = Number(rec['thinking_tokens'] ?? 0);
-  const facts = [
-    `${str(rec['mode_used'])} ${dim(`(${str(rec['router_rule'])})`)}`,
-    `${str(rec['completion_tokens'])} tok${thinking > 0 ? dim(` (${thinking} thinking)`) : ''}`,
-    `${str(rec['eval_tps'])} tok/s`,
-    secs(rec['total_ms']),
-    rec['finish_reason'] === 'length' ? yellow('cut off') : '',
-    rec['think_budget_hit'] ? yellow('budget hit') : '',
-    Number(rec['retries'] ?? 0) > 0 ? yellow(`${str(rec['retries'])} retry`) : '',
-    Number(rec['queue_wait_ms'] ?? 0) > 1000 ? yellow(`queued ${secs(rec['queue_wait_ms'])}`) : '',
-  ].filter(Boolean);
-  const lines = [`${green('✔')} ${facts.join(dim(' · '))}`];
-  for (const call of (rec['tool_calls'] as Array<{ function: { name: string; arguments: string } }> | undefined) ??
-    []) {
-    lines.push(indent(`⚙ ${call.function.name}(${oneLine(call.function.arguments, 140)})`, yellow));
+/** Tool call [id] lines, then Completed [id] / Mode used · Tokens · Speed · Time · flags / Answer */
+function renderCompletion(rec: Record<string, unknown>): string[] {
+  const entries: string[] = [];
+  const calls = (rec['tool_calls'] as Array<{ function: { name: string; arguments: string } }> | undefined) ?? [];
+  for (const call of calls) {
+    entries.push(
+      [
+        `${yellow(bold('Tool call'))} ${rid(rec)}`,
+        `  ${field('Name', yellow(call.function.name))}${dim('  ·  ')}${field('Arguments', oneLine(call.function.arguments, 160))}`,
+      ].join('\n'),
+    );
   }
-  if (rec['answer']) lines.push(indent(oneLine(rec['answer'], 200), green));
-  return lines.join('\n');
+  const lines: string[] = [];
+  const thinking = Number(rec['thinking_tokens'] ?? 0);
+  const flags = [
+    rec['finish_reason'] === 'length' ? 'cut off at max_tokens' : '',
+    rec['think_budget_hit'] ? 'thinking budget hit' : '',
+    Number(rec['retries'] ?? 0) > 0 ? `${str(rec['retries'])} validation retry` : '',
+    Number(rec['queue_wait_ms'] ?? 0) > 1000 ? `waited ${secs(rec['queue_wait_ms'])} in queue` : '',
+  ].filter(Boolean);
+  lines.push(
+    `${green(bold('Completed'))} ${rid(rec)}`,
+    fields(
+      [
+        'Mode used',
+        `${str(rec['mode_used'])} ${dim(`(rule: ${str(rec['router_rule'])}${rec['router_detail'] ? ` ${str(rec['router_detail'])}` : ''})`)}`,
+      ],
+      ['Tools', rec['tool_parse'] && rec['tool_parse'] !== 'none' ? str(rec['tool_parse']) : undefined],
+      ['Tokens', `${str(rec['completion_tokens'])}${thinking > 0 ? ` (${thinking} thinking)` : ''}`],
+      ['Speed', `${str(rec['eval_tps'])} tok/s`],
+      ['Time', secs(rec['total_ms'])],
+    ),
+  );
+  if (flags.length) lines.push(`  ${field('Note', yellow(flags.join(', ')))}`);
+  if (rec['answer']) lines.push(`  ${field('Answer', green(oneLine(rec['answer'], 240)))}`);
+  entries.push(lines.join('\n'));
+  return entries;
 }
 
-/** `✖ status code · time` then the message. */
+/** Failed [id] / Status · Time / Error */
 function renderFailure(rec: Record<string, unknown>): string {
   return [
-    `${red('✖')} ${red(`${str(rec['status'])} ${str(rec['code'])}`)}${dim(' · ')}${secs(rec['total_ms'])}`,
-    indent(oneLine(rec['message'], 200), red),
+    `${red(bold('Failed'))} ${rid(rec)}`,
+    fields(['Status', red(`${str(rec['status'])} ${str(rec['code'])}`)], ['Time', secs(rec['total_ms'])]),
+    `  ${field('Error', red(oneLine(rec['message'], 240)))}`,
   ].join('\n');
 }
 
-const EVENT_RENDERERS: Record<string, (rec: Record<string, unknown>) => string> = {
+/** Each renderer returns one or more entries; every entry gets its own timestamp. */
+const EVENT_RENDERERS: Record<string, (rec: Record<string, unknown>) => string | string[]> = {
   'chat.request': renderRequest,
   'chat.completion': renderCompletion,
   'chat.completion failed': renderFailure,
@@ -149,7 +176,10 @@ export function formatPretty(line: string): string {
   if (typeof rec['ollama'] === 'string') return `${stamp} ${gray(rec['ollama'])}`;
 
   const render = EVENT_RENDERERS[msg];
-  if (render) return `${stamp} ${render(rec)}`;
+  if (render) {
+    const entries = render(rec);
+    return (Array.isArray(entries) ? entries : [entries]).map((e) => `${stamp} ${e}`).join('\n');
+  }
 
   const level = LEVELS[Number(rec['level'])] ?? String(rec['level']);
   const head = `${stamp} ${level} ${bold(msg)}`;
