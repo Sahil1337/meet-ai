@@ -85,7 +85,6 @@ export function chatRouter(ctx: AppContext): Router {
             router_rule: result.meta.router.rule,
             router_detail: result.meta.router.detail ?? null,
             tool_parse: result.meta.tool_parse,
-            think_budget_hit: result.meta.think_budget_hit,
             retries: result.meta.retries,
             finish_reason: result.finishReason,
             prompt_tokens: result.usage.prompt_tokens,

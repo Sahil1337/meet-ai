@@ -10,7 +10,7 @@ Ollama instance serving Qwen3.5-4B. It exists so that any OpenAI SDK client
 gets three things the raw model does not reliably give:
 
 1. **Adaptive thinking** — per-request choice between `think:false` and
-   `think:true` with a token budget and a forced-close continuation.
+   `think:true`, decided by the router.
 2. **Tool calls that always validate** — native Ollama tool calls when
    available, a Hermes-style `<tool_call>` parser as fallback, constrained
    decoding when the caller forces a tool, and ajv validation of arguments
@@ -51,7 +51,7 @@ src/
       mapping.ts      request validation (zod) and response builders, typed
                       against shared/types.ts
       router.ts       adaptive fast/thinking decision (rules 1-6)
-      thinking.ts     <think> splitting, budget enforcement, one model "turn"
+      thinking.ts     <think> splitting, one model "turn"
       tools.ts        tool prompt injection, <tool_call> parser, JSON repair, ajv
       structured.ts   response_format -> format, output validation
       completion.ts   orchestration of one chat completion (retries, meta)

@@ -1,5 +1,4 @@
 import type { Config } from '../config.js';
-import { estimateTokens } from '../util/tokens.js';
 import type {
   OllamaChatChunk,
   OllamaChatRequest,
@@ -104,7 +103,6 @@ export interface TurnResult {
   doneReason: string | undefined;
   promptTokens: number;
   completionTokens: number;
-  budgetHit: boolean;
   upstreamCalls: number;
   upstreamMs: number;
   timing: UpstreamTiming;
@@ -112,27 +110,14 @@ export interface TurnResult {
   requests: OllamaChatRequest[];
 }
 
-const addTiming = (a: UpstreamTiming, b: UpstreamTiming): UpstreamTiming => ({
-  loadMs: a.loadMs + b.loadMs,
-  promptEvalMs: a.promptEvalMs + b.promptEvalMs,
-  evalMs: a.evalMs + b.evalMs,
-});
-
-export const FORCED_CLOSE = '\n\nBased on the above, the final answer is:';
-
-/**
- * The exact Ollama payload for a turn. In thinking mode the model may spend
- * THINK_BUDGET_TOKENS on reasoning on top of the caller's answer budget.
- */
+/** The exact Ollama payload for a turn. Reasoning and answer share `maxTokens`. */
 export function turnRequest(config: Config, input: TurnInput, stream: boolean): OllamaChatRequest {
-  const think = input.mode === 'thinking';
-  const numPredict = think ? config.THINK_BUDGET_TOKENS + input.maxTokens : input.maxTokens;
   return {
     model: config.MODEL,
     messages: input.messages,
     stream,
-    think,
-    options: { ...input.options, num_predict: numPredict },
+    think: input.mode === 'thinking',
+    options: { ...input.options, num_predict: input.maxTokens },
     ...(input.tools ? { tools: input.tools } : {}),
     ...(input.format ? { format: input.format } : {}),
   };
@@ -140,9 +125,8 @@ export function turnRequest(config: Config, input: TurnInput, stream: boolean): 
 
 /**
  * Runs one turn in `fast` (think:false) or `thinking` (think:true) mode.
- * In thinking mode the response is capped at THINK_BUDGET_TOKENS + maxTokens.
- * If the model spends the whole budget thinking and produces no answer, a
- * second call continues from the truncated thinking with a forced close.
+ * In thinking mode reasoning and answer share `maxTokens`, so a long think
+ * leaves less room for the answer and can end the turn on `length`.
  */
 export async function runTurn(
   client: OllamaClient,
@@ -151,48 +135,7 @@ export async function runTurn(
   signal?: AbortSignal,
   onDelta?: (delta: Delta) => void,
 ): Promise<TurnResult> {
-  const stream = Boolean(onDelta);
-  const first = await callOnce(client, turnRequest(config, input, stream), signal, onDelta);
-  if (input.mode !== 'thinking' || first.thinking.trim().length === 0 || first.nativeToolCalls.length > 0) return first;
-
-  // The budget covers thinking + answer. If generation stopped on length with no answer, or with an
-  // answer far shorter than the caller asked for, the model spent the budget thinking: continue from
-  // the truncated thinking (and any partial answer) with thinking disabled.
-  const partial = first.content.trimEnd();
-  const cutOff = first.doneReason === 'length' && estimateTokens(partial) < input.maxTokens;
-  if (partial.length > 0 && !cutOff) return first;
-
-  const prefix: OllamaMessage = {
-    role: 'assistant',
-    content: `${OPEN}\n${first.thinking.trimEnd()}\n${CLOSE}${partial ? partial : FORCED_CLOSE}`,
-  };
-  const continuation = turnRequest(config, { ...input, mode: 'fast', messages: [...input.messages, prefix] }, stream);
-  const second = await callOnce(
-    client,
-    continuation,
-    signal,
-    onDelta ? (d) => d.content && onDelta({ content: d.content }) : undefined,
-  );
-  return {
-    ...second,
-    content: partial + second.content,
-    thinking: first.thinking,
-    budgetHit: true,
-    promptTokens: first.promptTokens + second.promptTokens,
-    completionTokens: first.completionTokens + second.completionTokens,
-    upstreamCalls: first.upstreamCalls + second.upstreamCalls,
-    upstreamMs: first.upstreamMs + second.upstreamMs,
-    timing: addTiming(first.timing, second.timing),
-    requests: [...first.requests, ...second.requests],
-  };
-}
-
-async function callOnce(
-  client: OllamaClient,
-  req: OllamaChatRequest,
-  signal?: AbortSignal,
-  onDelta?: (d: Delta) => void,
-): Promise<TurnResult> {
+  const req = turnRequest(config, input, Boolean(onDelta));
   const started = Date.now();
   const splitter = new ThinkSplitter();
   const result: TurnResult = {
@@ -202,7 +145,6 @@ async function callOnce(
     doneReason: undefined,
     promptTokens: 0,
     completionTokens: 0,
-    budgetHit: false,
     upstreamCalls: 1,
     upstreamMs: 0,
     timing: { loadMs: 0, promptEvalMs: 0, evalMs: 0 },

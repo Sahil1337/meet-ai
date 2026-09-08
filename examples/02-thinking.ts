@@ -1,7 +1,7 @@
 /**
  * Explicit thinking mode. Reasoning comes back in `reasoning_content`, never
- * in `content`. If the model overruns THINK_BUDGET_TOKENS the proxy forces an
- * answer and reports `think_budget_hit: true`.
+ * in `content`. Reasoning and answer share `max_tokens`, so a long think
+ * leaves less room for the answer.
  *
  *   bun examples/02-thinking.ts
  */
@@ -20,7 +20,6 @@ const completion = await qwen.chat({
 });
 
 const msg = completion.choices[0]!.message;
-line('budget hit', completion.meetiq.think_budget_hit);
 line(
   'tokens',
   `${completion.usage.completion_tokens} total, ~${completion.usage.completion_tokens_details.reasoning_tokens} reasoning`,

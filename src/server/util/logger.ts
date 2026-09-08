@@ -126,7 +126,6 @@ function renderCompletion(rec: Record<string, unknown>): string[] {
   const thinking = Number(rec['thinking_tokens'] ?? 0);
   const flags = [
     rec['finish_reason'] === 'length' ? 'cut off at max_tokens' : '',
-    rec['think_budget_hit'] ? 'thinking budget hit' : '',
     Number(rec['retries'] ?? 0) > 0 ? `${str(rec['retries'])} validation retry` : '',
     Number(rec['queue_wait_ms'] ?? 0) > 1000 ? `waited ${secs(rec['queue_wait_ms'])} in queue` : '',
   ].filter(Boolean);

@@ -15,7 +15,7 @@ PROXY_URL=https://ai.example.com API_KEY=... bun examples/04-tool-call-round-tri
 | File                         | Shows                                                                 |
 | ---------------------------- | --------------------------------------------------------------------- |
 | `01-fast-extraction.ts`      | `extract()`: JSON-schema output, validated, fast routing.             |
-| `02-thinking.ts`             | Explicit thinking mode, `reasoning_content`, the thinking budget.     |
+| `02-thinking.ts`             | Explicit thinking mode, `reasoning_content`, reasoning token counts.  |
 | `03-adaptive-router.ts`      | `route()`: which router rule fires for different prompts.             |
 | `04-tool-call-round-trip.ts` | `runTools()`: tools, handlers, results sent back, final answer.       |
 | `05-streaming.ts`            | `stream()`: reasoning and answer deltas as they arrive.               |

@@ -81,7 +81,6 @@ export interface ProxyMeta {
   mode_requested: Mode | null;
   mode_used: 'fast' | 'thinking';
   tool_parse: ToolParse;
-  think_budget_hit: boolean;
   retries: number;
   upstream_calls: number;
   upstream_ms: number;

@@ -10,7 +10,12 @@ import { qwen } from './lib.js';
 
 let phase = '';
 for await (const chunk of qwen.stream({
-  messages: [{ role: 'user', content: 'Explain in two sentences why a small model benefits from a thinking budget.' }],
+  messages: [
+    {
+      role: 'user',
+      content: 'Explain in two sentences why a small model benefits from explicit step-by-step reasoning.',
+    },
+  ],
 })) {
   const choice = chunk.choices[0]!;
   if (choice.delta.reasoning_content) {

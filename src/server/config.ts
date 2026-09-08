@@ -41,7 +41,6 @@ function buildEnv(runtimeEnv: Record<string, string | undefined>) {
       MAX_PARALLEL: int(2),
 
       DEFAULT_MODE: z.enum(['thinking', 'fast', 'adaptive']).default('adaptive'),
-      THINK_BUDGET_TOKENS: int(1024),
       DEFAULT_MAX_TOKENS: int(2048),
       ADAPTIVE_SHORT_TOKENS: int(60),
       ADAPTIVE_TOOLS_THINK: bool(true),

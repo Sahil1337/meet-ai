@@ -129,7 +129,6 @@ export async function runChatCompletion(
     ms: 0,
     prompt: 0,
     completion: 0,
-    budgetHit: false,
     loadMs: 0,
     promptEvalMs: 0,
     evalMs: 0,
@@ -140,7 +139,6 @@ export async function runChatCompletion(
     stats.ms += turn.upstreamMs;
     stats.prompt += turn.promptTokens;
     stats.completion += turn.completionTokens;
-    stats.budgetHit ||= turn.budgetHit;
     stats.loadMs += turn.timing.loadMs;
     stats.promptEvalMs += turn.timing.promptEvalMs;
     stats.evalMs += turn.timing.evalMs;
@@ -249,7 +247,6 @@ export async function runChatCompletion(
       mode_requested: requestedMode(req) ?? null,
       mode_used: modeUsed,
       tool_parse: toolParse,
-      think_budget_hit: stats.budgetHit,
       retries: stats.retries,
       upstream_calls: stats.calls,
       upstream_ms: stats.ms,

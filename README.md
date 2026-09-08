@@ -5,7 +5,7 @@
 
 A minimal OpenAI-compatible HTTP proxy in front of a local [Ollama](https://ollama.com) running **Qwen3.5-4B**. Point any OpenAI SDK at it and get three things the raw model doesn't reliably give you:
 
-- **Adaptive thinking** — picks `think:false`/`think:true` per request, enforces a token budget, and forces an answer if the model overruns it. Reasoning comes back in `reasoning_content`, never mixed into `content`.
+- **Adaptive thinking** — picks `think:false`/`think:true` per request. Reasoning comes back in `reasoning_content`, never mixed into `content`.
 - **Tool calls that always validate** — native Ollama tool calls when available, a Hermes-style `<tool_call>` parser as fallback, constrained decoding when a tool is forced, and ajv validation with one retry. Never a silently wrong call.
 - **Structured output that always validates** — `response_format` maps to Ollama's `format`, is validated against your schema, retried once, then rejected with a 502.
 
@@ -103,8 +103,7 @@ All settings are environment variables, validated at startup with [t3-env](https
 | `KEEP_ALIVE`              | `30m`                    | How long Ollama keeps the model loaded.                                                                                                           |
 | `MAX_PARALLEL`            | `2`                      | Proxy concurrency; must match Ollama's parallelism.                                                                                               |
 | `DEFAULT_MODE`            | `adaptive`               | `thinking`, `fast` or `adaptive` when the caller sends no `mode`.                                                                                 |
-| `THINK_BUDGET_TOKENS`     | `1024`                   | Thinking budget per request.                                                                                                                      |
-| `DEFAULT_MAX_TOKENS`      | `2048`                   | Answer budget when the caller sends no `max_tokens`.                                                                                              |
+| `DEFAULT_MAX_TOKENS`      | `2048`                   | Output budget (reasoning + answer) when the caller sends no `max_tokens`.                                                                         |
 | `ADAPTIVE_SHORT_TOKENS`   | `60`                     | Router rule 5 threshold (chars / 4).                                                                                                              |
 | `ADAPTIVE_TOOLS_THINK`    | `true`                   | Router rule 3: tools imply thinking.                                                                                                              |
 | `CLASSIFIER_TIMEOUT_MS`   | `3000`                   | Router rule 6 timeout; timeout means fast.                                                                                                        |
@@ -148,8 +147,7 @@ format (JSON schema -> grammar) | think flag | num_predict
 │
 ▼
 turn ──► POST /api/chat on Ollama
-thinking: budget = THINK_BUDGET_TOKENS + max_tokens
-cut off by the budget (no or partial answer)? -> continuation call with forced </think>
+num_predict = max_tokens (in thinking mode reasoning and answer share it)
 │
 ▼
 validate ──► tool args (ajv) / structured output (ajv)
@@ -162,11 +160,11 @@ OpenAI response (+ meetiq metadata, x-meetiq-* headers, one log line)
 
 ### Thinking modes
 
-| Mode       | Upstream            | Behaviour                                                                                                                                                                                                                                                                                                                                   |
-| ---------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fast`     | `think:false`       | Any `<think>` that leaks into content is stripped.                                                                                                                                                                                                                                                                                          |
-| `thinking` | `think:true`        | `num_predict = THINK_BUDGET_TOKENS + max_tokens`. Reasoning returns in `choices[0].message.reasoning_content`. A budget overrun (no answer, or a partial one cut off on length) triggers a second call that continues from the truncated thinking and any partial answer with a forced `</think>`, and sets `meetiq.think_budget_hit=true`. |
-| `adaptive` | decided per request | See the router below.                                                                                                                                                                                                                                                                                                                       |
+| Mode       | Upstream            | Behaviour                                                                                                                                                                                                                                                                                                 |
+| ---------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fast`     | `think:false`       | Any `<think>` that leaks into content is stripped.                                                                                                                                                                                                                                                        |
+| `thinking` | `think:true`        | `num_predict = max_tokens`. Reasoning returns in `choices[0].message.reasoning_content`; the reasoning token count is in `usage.completion_tokens_details.reasoning_tokens`. Reasoning and the answer share the budget, so a long think leaves less room for the answer and can end the turn on `length`. |
+| `adaptive` | decided per request | See the router below.                                                                                                                                                                                                                                                                                     |
 
 ### Adaptive router
 
@@ -200,7 +198,6 @@ Send `stream: true` and read server-sent events, exactly as with OpenAI. The str
 
 - Thinking tokens arrive as `delta.reasoning_content`, answer tokens as `delta.content`, in that order.
 - The first chunk carries `delta.role`; the last carries `finish_reason`, `usage` and `meetiq`.
-- If the thinking budget runs out, the continuation call streams into the same response: you see reasoning stop and the answer begin.
 
 With the OpenAI SDK:
 
