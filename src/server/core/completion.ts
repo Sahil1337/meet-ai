@@ -192,7 +192,7 @@ export async function runChatCompletion(
   if (activeTools) {
     const extract = (t: TurnResult): ParseResult => {
       if (forcedChoice) return parseForcedOutput(t.content);
-      if (t.nativeToolCalls.length) return fromNativeToolCalls(t.nativeToolCalls);
+      if (t.nativeToolCalls.length) return fromNativeToolCalls(t.nativeToolCalls, t.content);
       if (unionTools) return parseUnionOutput(t.content, unionTools);
       return parseToolCalls(t.content, activeTools);
     };

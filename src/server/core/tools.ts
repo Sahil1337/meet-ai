@@ -217,8 +217,9 @@ function toParsedCall(value: unknown): ParsedToolCall {
   return { name: value['name'], arguments: args };
 }
 
-export function fromNativeToolCalls(native: OllamaToolCall[]): ParseResult {
-  const result: ParseResult = { content: null, calls: [], errors: [] };
+/** `content` is any prose the model produced alongside the calls; it is part of the turn. */
+export function fromNativeToolCalls(native: OllamaToolCall[], content = ''): ParseResult {
+  const result: ParseResult = { content: content.trim() || null, calls: [], errors: [] };
   for (const call of native) {
     try {
       const args =
