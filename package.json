@@ -1,0 +1,14 @@
+{
+  "name": "meetiq",
+  "private": true,
+  "scripts": {
+    "test": "bun test/test.ts",
+    "test:stream-tools": "bun test/stream-tools.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
