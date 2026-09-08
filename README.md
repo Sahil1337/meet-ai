@@ -185,7 +185,7 @@ Rules are evaluated in order; the first match wins (`meetiq.router.rule` / `x-me
 2. If none come back, the content is parsed for `<tool_call>` blocks (`tool_parse: "fallback"`) in either dialect — Qwen XML (`<function=name><parameter=key>`) or Hermes JSON, with lenient repair. XML parameters are typed using the tool's own schema.
 3. `tools` together with a `json_schema` `response_format` compiles both into one grammar — `oneOf(each tool call shape, your response schema)` (`tool_parse: "union"`). The model chooses per turn: call a tool, or answer in your schema. A call is validated like any other; an answer goes through structured-output validation. `json_object` has no schema to union with and keeps the plain path.
 4. Arguments are validated with ajv against the tool's `parameters`; one retry on failure, then **502 `tool_call_invalid`**.
-5. `tool_choice: "required"` or a forced function uses constrained decoding — Ollama's `format` becomes a JSON schema for the call, so this path can't produce malformed output.
+5. `tool_choice: "required"` or a forced function uses constrained decoding — Ollama's `format` becomes a JSON schema for the call (a `oneOf` across tools for `"required"`), so this path can't produce malformed output. The tool definitions are still sent: forcing _which_ tool is used should not hide _what the tools are for_.
 6. Incoming `role:"tool"` messages become `<tool_response>` text; a preceding assistant `tool_calls` message is re-rendered as `<tool_call>` text.
 
 ### Structured output

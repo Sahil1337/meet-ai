@@ -108,6 +108,12 @@ personal experiments.
   Qwen XML (`<function=name><parameter=key>`, what Qwen3.5's own template
   emits) and Hermes JSON. Do not add a third without checking real model
   output for it.
+- Tool definitions always reach the model when the caller sent tools, forced
+  choice included. `tool_choice` says whether a call is required; `tools` says
+  what the tools mean, exactly as OpenAI and Anthropic separate them. Hiding
+  them under a forced choice measurably hurts: with two tools and no
+  descriptions the model picked the right one 1 of 4 times, and 4 of 4 with
+  them. The grammar is the hard constraint, the definitions are the semantics.
 - `tools` + `response_format` compile into one `oneOf` grammar, so a turn can
   call a tool or answer in the caller's schema. Without it the response schema
   is the only grammar and the model, unable to call anything, fabricates an

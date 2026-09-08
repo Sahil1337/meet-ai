@@ -74,8 +74,10 @@ function planCompletion(req: ChatRequest, config: Config, decision: RouteDecisio
   const modeUsed: Mode = forcedChoice ? 'fast' : decision.mode;
 
   // Tools rendered for the model may be slimmed; validation always uses `activeTools`.
-  const modelTools =
-    activeTools && !forcedChoice ? (config.TOOL_SCHEMA_SLIM ? slimTools(activeTools) : activeTools) : undefined;
+  // Definitions go to the model even when `tool_choice` forces a call: forcing
+  // which tool is used should not hide what the tools are for. The grammar is
+  // the hard constraint, the definitions are the semantics.
+  const modelTools = activeTools ? (config.TOOL_SCHEMA_SLIM ? slimTools(activeTools) : activeTools) : undefined;
   const messages = toOllamaMessages(req.messages);
   // `format` becomes a decoding grammar, not prompt text, so it is never slimmed.
   // `json_object` has no schema to union with, so it keeps the plain path.
