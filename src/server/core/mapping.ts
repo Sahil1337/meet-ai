@@ -103,8 +103,33 @@ export type RequestedMode = Mode;
 type Assert<T extends true> = T;
 export type RequestContract = Assert<WireChatRequest extends z.input<typeof chatRequestSchema> ? true : false>;
 
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/**
+ * OpenAI SDKs and gateways (LiteLLM, LangChain) send `null` for optionals the
+ * caller left unset — `{"stop": null, "max_tokens": null}`. `null` is not the
+ * same as absent to zod, so those would 400 on fields the proxy does support.
+ * Dropping them makes `.optional()` apply. Message `content` keeps its `null`,
+ * which is meaningful there: an assistant turn that was only tool calls.
+ */
+function dropNullOptionals(body: unknown): unknown {
+  if (!isPlainObject(body)) return body;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(body)) {
+    if (value === null) continue;
+    out[key] = key === 'messages' && Array.isArray(value) ? value.map(dropNullMessageFields) : value;
+  }
+  return out;
+}
+
+function dropNullMessageFields(message: unknown): unknown {
+  if (!isPlainObject(message)) return message;
+  return Object.fromEntries(Object.entries(message).filter(([k, v]) => v !== null || k === 'content'));
+}
+
 export function parseChatRequest(body: unknown): ChatRequest {
-  const result = chatRequestSchema.safeParse(body);
+  const result = chatRequestSchema.safeParse(dropNullOptionals(body));
   if (!result.success) {
     const issues = result.error.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`);
     throw invalidRequest(`Invalid request: ${issues.join('; ')}`, issues);
@@ -144,11 +169,39 @@ function toArgumentMap(raw: string): Record<string, unknown> {
  *  - `developer` becomes `system`.
  *  - assistant `tool_calls` are passed through structurally, so the model's
  *    own chat template renders them in whatever dialect it was trained on.
- *  - `tool` results become user messages wrapped in `<tool_response>`.
+ *  - `tool` results pass through as `role:"tool"`; the template wraps and
+ *    groups them. Runs are reordered to match their `tool_call_id`s.
  * Order is preserved so the model sees one consistent history.
  */
+/**
+ * OpenAI associates a tool result with its call by `tool_call_id`, and clients
+ * may send results in any order. The chat template consumes a run of tool
+ * messages positionally, so each run is reordered to match the calls it
+ * answers. A result whose id matches nothing keeps its relative position.
+ */
+function orderToolResults(messages: ChatMessage[]): ChatMessage[] {
+  const out = [...messages];
+  for (let i = 0; i < out.length; i++) {
+    const calls = out[i]?.role === 'assistant' ? out[i]?.tool_calls : undefined;
+    if (!calls?.length) continue;
+    let end = i + 1;
+    while (end < out.length && out[end]?.role === 'tool') end++;
+    const run = out.slice(i + 1, end);
+    if (run.length > 1) {
+      const rank = new Map(calls.map((c, index) => [c.id, index]));
+      const ordered = run
+        .map((m, index) => ({ m, index, rank: rank.get(m.tool_call_id) ?? Number.MAX_SAFE_INTEGER }))
+        .sort((a, b) => a.rank - b.rank || a.index - b.index)
+        .map((e) => e.m);
+      out.splice(i + 1, run.length, ...ordered);
+    }
+    i = end - 1;
+  }
+  return out;
+}
+
 export function toOllamaMessages(messages: ChatMessage[]): OllamaMessage[] {
-  return messages.map((m): OllamaMessage => {
+  return orderToolResults(messages).map((m): OllamaMessage => {
     const text = messageText(m.content);
     switch (m.role) {
       case 'system':
@@ -157,7 +210,10 @@ export function toOllamaMessages(messages: ChatMessage[]): OllamaMessage[] {
       case 'user':
         return { role: 'user', content: text };
       case 'tool':
-        return { role: 'user', content: `<tool_response>\n${text}\n</tool_response>` };
+        // The template wraps these in <tool_response> itself and groups a run
+        // of them into one user turn — the shape the model was trained on.
+        // Hand-rolling one user message each produced N separate turns.
+        return { role: 'tool', content: text };
       case 'assistant': {
         if (!m.tool_calls?.length) return { role: 'assistant', content: text };
         return {
