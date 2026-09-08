@@ -46,7 +46,6 @@ function buildEnv(runtimeEnv: Record<string, string | undefined>) {
       ADAPTIVE_TOOLS_THINK: bool(true),
       CLASSIFIER_TIMEOUT_MS: int(3000),
 
-      TOOL_INJECTION: z.enum(['native', 'prompt']).default('native'),
       TOOL_SCHEMA_SLIM: bool(true),
 
       QUEUE_TIMEOUT_MS: int(120_000),

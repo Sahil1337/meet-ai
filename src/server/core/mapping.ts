@@ -128,24 +128,25 @@ export function messageText(content: ChatMessage['content']): string {
     .join('\n');
 }
 
-export function renderToolCallBlock(name: string, args: unknown): string {
-  return `<tool_call>\n${JSON.stringify({ name, arguments: args })}\n</tool_call>`;
-}
-
-function parseArgsForRender(raw: string): unknown {
+/** OpenAI sends arguments as a JSON string; the template needs a map to iterate. */
+function toArgumentMap(raw: string): Record<string, unknown> {
   try {
-    return JSON.parse(raw);
+    const parsed: unknown = JSON.parse(raw);
+    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
   } catch {
-    return raw;
+    return {};
   }
 }
 
 /**
  * OpenAI transcript -> Ollama transcript.
  *  - `developer` becomes `system`.
- *  - assistant `tool_calls` are re-rendered as `<tool_call>` text.
+ *  - assistant `tool_calls` are passed through structurally, so the model's
+ *    own chat template renders them in whatever dialect it was trained on.
  *  - `tool` results become user messages wrapped in `<tool_response>`.
- * Order is preserved so the model sees one consistent Hermes-style history.
+ * Order is preserved so the model sees one consistent history.
  */
 export function toOllamaMessages(messages: ChatMessage[]): OllamaMessage[] {
   return messages.map((m): OllamaMessage => {
@@ -160,11 +161,13 @@ export function toOllamaMessages(messages: ChatMessage[]): OllamaMessage[] {
         return { role: 'user', content: `<tool_response>\n${text}\n</tool_response>` };
       case 'assistant': {
         if (!m.tool_calls?.length) return { role: 'assistant', content: text };
-        const blocks = m.tool_calls.map((c) =>
-          renderToolCallBlock(c.function.name, parseArgsForRender(c.function.arguments)),
-        );
-        const content = text ? `${text}\n${blocks.join('\n')}` : blocks.join('\n');
-        return { role: 'assistant', content };
+        return {
+          role: 'assistant',
+          content: text,
+          tool_calls: m.tool_calls.map((c) => ({
+            function: { name: c.function.name, arguments: toArgumentMap(c.function.arguments) },
+          })),
+        };
       }
     }
   });

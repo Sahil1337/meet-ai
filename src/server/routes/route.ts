@@ -25,7 +25,7 @@ export function routeRouter(ctx: AppContext): Router {
         router: decision,
         mode_used: plan.modeUsed,
         buffered_streaming: plan.buffered,
-        tool_path: plan.forcedChoice ? 'forced' : plan.activeTools ? ctx.config.TOOL_INJECTION : 'none',
+        tool_path: plan.forcedChoice ? 'forced' : plan.activeTools ? 'native' : 'none',
         estimated_prompt_tokens: estimateTokens(JSON.stringify(request.messages) + JSON.stringify(request.tools ?? '')),
         upstream_request: request,
       });

@@ -107,7 +107,6 @@ All settings are environment variables, validated at startup with [t3-env](https
 | `ADAPTIVE_SHORT_TOKENS`   | `60`                     | Router rule 5 threshold (chars / 4).                                                                                                              |
 | `ADAPTIVE_TOOLS_THINK`    | `true`                   | Router rule 3: tools imply thinking.                                                                                                              |
 | `CLASSIFIER_TIMEOUT_MS`   | `3000`                   | Router rule 6 timeout; timeout means fast.                                                                                                        |
-| `TOOL_INJECTION`          | `native`                 | `native` passes tools to Ollama's template; `prompt` injects a Hermes tools block and always parses.                                              |
 | `TOOL_SCHEMA_SLIM`        | `true`                   | Strip validation-only keywords from tool schemas before the model sees them.                                                                      |
 | `QUEUE_TIMEOUT_MS`        | `120000`                 | Max wait for a slot before 503.                                                                                                                   |
 | `UPSTREAM_TIMEOUT_MS`     | `600000`                 | Per-call Ollama timeout.                                                                                                                          |
@@ -182,8 +181,8 @@ Rules are evaluated in order; the first match wins (`meetiq.router.rule` / `x-me
 
 ### Tool calling
 
-1. `TOOL_INJECTION=native` (default): tools are passed to Ollama; structured `message.tool_calls` are used when returned (`tool_parse: "native"`).
-2. Otherwise the content is parsed for Hermes-style `<tool_call>{"name":...,"arguments":{...}}</tool_call>` blocks (`tool_parse: "fallback"`), with lenient JSON repair for malformed model output.
+1. Tools are passed to Ollama, which renders them with the model's own chat template; structured `message.tool_calls` are used when returned (`tool_parse: "native"`).
+2. If none come back, the content is parsed for `<tool_call>` blocks (`tool_parse: "fallback"`) in either dialect — Qwen XML (`<function=name><parameter=key>`) or Hermes JSON, with lenient repair. XML parameters are typed using the tool's own schema.
 3. Arguments are validated with ajv against the tool's `parameters`; one retry on failure, then **502 `tool_call_invalid`**.
 4. `tool_choice: "required"` or a forced function uses constrained decoding — Ollama's `format` becomes a JSON schema for the call, so this path can't produce malformed output.
 5. Incoming `role:"tool"` messages become `<tool_response>` text; a preceding assistant `tool_calls` message is re-rendered as `<tool_call>` text.

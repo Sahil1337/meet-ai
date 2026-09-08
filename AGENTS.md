@@ -12,7 +12,7 @@ gets three things the raw model does not reliably give:
 1. **Adaptive thinking** — per-request choice between `think:false` and
    `think:true`, decided by the router.
 2. **Tool calls that always validate** — native Ollama tool calls when
-   available, a Hermes-style `<tool_call>` parser as fallback, constrained
+   available, a `<tool_call>` parser as fallback, constrained
    decoding when the caller forces a tool, and ajv validation of arguments
    with one retry. Never a silently wrong call.
 3. **Structured output that always validates** — `response_format` mapped to
@@ -52,7 +52,7 @@ src/
                       against shared/types.ts
       router.ts       adaptive fast/thinking decision (rules 1-6)
       thinking.ts     <think> splitting, one model "turn"
-      tools.ts        tool prompt injection, <tool_call> parser, JSON repair, ajv
+      tools.ts        schema slimming, <tool_call> parser, JSON repair, ajv
       structured.ts   response_format -> format, output validation
       completion.ts   orchestration of one chat completion (retries, meta)
       stream.ts       SSE writer in OpenAI chunk format
@@ -102,9 +102,14 @@ personal experiments.
 
 ## Changing behaviour safely
 
-- The `<tool_call>` parser targets exactly the Hermes format Qwen is trained
-  on. Do not "generalise" it to other formats without checking real model
-  output for each.
+- Ollama parses tool calls itself when a request carries `tools`, so the
+  `<tool_call>` parser only runs when it returns none. It reads two dialects:
+  Qwen XML (`<function=name><parameter=key>`, what Qwen3.5's own template
+  emits) and Hermes JSON. Do not add a third without checking real model
+  output for it.
+- Never hand-render assistant `tool_calls` into prompt text. Pass them
+  through structurally so the model's chat template renders the dialect it
+  was trained on; the two drifted apart once already.
 - `NUM_GPU`, `NUM_CTX` and the KV cache type must be identical in every
   request, including the router's classifier call, or Ollama reloads the
   model. Set them in one place (`mapping.ts: baseOptions`).

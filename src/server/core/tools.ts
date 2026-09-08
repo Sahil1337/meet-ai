@@ -2,7 +2,7 @@ import type { Ajv } from 'ajv';
 import { invalidRequest } from './errors.js';
 import type { Tool, ToolChoice } from './mapping.js';
 import type { ToolCall } from '../../shared/types.js';
-import type { OllamaMessage, OllamaToolCall } from './ollama.js';
+import type { OllamaToolCall } from './ollama.js';
 import { splitThink } from './thinking.js';
 import { newToolCallId } from '../util/ids.js';
 
@@ -57,45 +57,6 @@ export function slimTools(tools: Tool[]): Tool[] {
 }
 
 // ---------------------------------------------------------------------------
-// Prompt injection (Hermes format, exactly what Qwen is trained on)
-// ---------------------------------------------------------------------------
-
-export function renderToolsBlock(tools: Tool[]): string {
-  const signatures = tools
-    .map((t) =>
-      JSON.stringify({
-        type: 'function',
-        function: {
-          name: t.function.name,
-          description: t.function.description ?? '',
-          parameters: t.function.parameters ?? { type: 'object', properties: {} },
-        },
-      }),
-    )
-    .join('\n');
-  return [
-    '# Tools',
-    'You may call one or more functions to assist with the user query.',
-    'You are provided with function signatures within <tools></tools> XML tags:',
-    '<tools>',
-    signatures,
-    '</tools>',
-    'For each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:',
-    '<tool_call>',
-    '{"name": <function-name>, "arguments": <args-json-object>}',
-    '</tool_call>',
-  ].join('\n');
-}
-
-/** Prepends the tools block to the first system message, or creates one. */
-export function injectTools(messages: OllamaMessage[], tools: Tool[]): OllamaMessage[] {
-  const block = renderToolsBlock(tools);
-  const index = messages.findIndex((m) => m.role === 'system');
-  if (index === -1) return [{ role: 'system', content: block }, ...messages];
-  return messages.map((m, i) => (i === index ? { ...m, content: `${block}\n\n${m.content}` } : m));
-}
-
-// ---------------------------------------------------------------------------
 // Parsing
 // ---------------------------------------------------------------------------
 
@@ -113,13 +74,22 @@ export interface ParseResult {
 }
 
 const BLOCK_RE = /<tool_call>\s*([\s\S]*?)\s*(?:<\/tool_call>|$)/g;
+const FUNCTION_RE = /^<function=([^>\s]+)>/;
+const PARAMETER_RE = /<parameter=([^>\s]+)>\n?([\s\S]*?)\n?(?:<\/parameter>|$)/g;
 
 /**
- * Extracts `<tool_call>` blocks from model output. Tolerates prose around the
- * blocks, several blocks, a missing closing tag at end of output, and JSON
- * that needs one lenient repair. Anything inside `<think>` is ignored.
+ * Extracts `<tool_call>` blocks from model output. Only reached when the
+ * backend returned no structured tool calls of its own. Tolerates prose
+ * around the blocks, several blocks, a missing closing tag at end of output,
+ * and both block dialects:
+ *
+ *   Qwen XML   <function=name><parameter=key>value</parameter></function>
+ *   Hermes     {"name": "...", "arguments": {...}}
+ *
+ * `tools` is used to type XML parameters, which arrive as untyped text.
+ * Anything inside `<think>` is ignored.
  */
-export function parseToolCalls(text: string): ParseResult {
+export function parseToolCalls(text: string, tools?: Tool[]): ParseResult {
   const visible = splitThink(text).content;
   const result: ParseResult = { content: null, calls: [], errors: [] };
   const first = visible.indexOf('<tool_call>');
@@ -133,12 +103,66 @@ export function parseToolCalls(text: string): ParseResult {
     const raw = (match[1] ?? '').trim();
     if (!raw) continue;
     try {
-      result.calls.push(toParsedCall(parseJsonLenient(raw)));
+      result.calls.push(FUNCTION_RE.test(raw) ? parseXmlCall(raw, tools) : toParsedCall(parseJsonLenient(raw)));
     } catch (err) {
       result.errors.push(`${err instanceof Error ? err.message : String(err)} in: ${raw}`);
     }
   }
   return result;
+}
+
+/** `properties` of the named tool, used to type XML parameter text. */
+function parameterSchemas(tools: Tool[] | undefined, name: string): Record<string, unknown> {
+  const params = tools?.find((t) => t.function.name === name)?.function.parameters;
+  const properties = isRecord(params) ? params['properties'] : undefined;
+  return isRecord(properties) ? properties : {};
+}
+
+/**
+ * XML parameters carry no types: the chat template writes objects and arrays
+ * as JSON and everything else as bare text. The declared schema decides how
+ * to read each one back; without one, JSON wins if it parses.
+ */
+function coerceParameter(text: string, schema: unknown): unknown {
+  const declared = isRecord(schema) ? schema['type'] : undefined;
+  const type = Array.isArray(declared) ? declared.find((t) => t !== 'null') : declared;
+  switch (type) {
+    case 'string':
+      return text;
+    case 'number':
+    case 'integer': {
+      const n = Number(text);
+      return text.trim() !== '' && Number.isFinite(n) ? n : text;
+    }
+    case 'boolean':
+      return text === 'true' ? true : text === 'false' ? false : text;
+    case 'object':
+    case 'array':
+      try {
+        return parseJsonLenient(text);
+      } catch {
+        return text;
+      }
+    default:
+      try {
+        return JSON.parse(text);
+      } catch {
+        return text;
+      }
+  }
+}
+
+function parseXmlCall(raw: string, tools: Tool[] | undefined): ParsedToolCall {
+  const name = FUNCTION_RE.exec(raw)?.[1];
+  if (!name) throw new Error('tool call must open with <function=name>');
+  const schemas = parameterSchemas(tools, name);
+  const args: Record<string, unknown> = {};
+  for (const match of raw.matchAll(PARAMETER_RE)) {
+    const key = match[1];
+    if (!key) continue;
+    args[key] = coerceParameter((match[2] ?? '').trim(), schemas[key]);
+  }
+  return { name, arguments: args };
 }
 
 function toParsedCall(value: unknown): ParsedToolCall {

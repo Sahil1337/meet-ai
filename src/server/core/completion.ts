@@ -5,7 +5,6 @@ import {
   requestOptions,
   resolveMaxTokens,
   toOllamaMessages,
-  renderToolCallBlock,
   type ChatRequest,
   type Tool,
   type ToolChoice,
@@ -18,7 +17,6 @@ import { runTurn, turnRequest, type Delta, type Mode, type TurnInput, type TurnR
 import {
   forcedToolFormat,
   fromNativeToolCalls,
-  injectTools,
   isForcedChoice,
   parseForcedOutput,
   parseToolCalls,
@@ -72,12 +70,9 @@ export function planCompletion(req: ChatRequest, config: Config, decision: Route
   const modeUsed: Mode = forcedChoice ? 'fast' : decision.mode;
 
   // Tools rendered for the model may be slimmed; validation always uses `activeTools`.
-  const promptTools =
+  const modelTools =
     activeTools && !forcedChoice ? (config.TOOL_SCHEMA_SLIM ? slimTools(activeTools) : activeTools) : undefined;
-  const baseMessages = toOllamaMessages(req.messages);
-  const messages =
-    promptTools && config.TOOL_INJECTION === 'prompt' ? injectTools(baseMessages, promptTools) : baseMessages;
-  const nativeTools = promptTools && config.TOOL_INJECTION === 'native' ? promptTools : undefined;
+  const messages = toOllamaMessages(req.messages);
   // `format` becomes a decoding grammar, not prompt text, so it is never slimmed.
   const format = forcedChoice && activeTools ? forcedToolFormat(activeTools, forcedChoice) : structuredFormat;
 
@@ -91,7 +86,7 @@ export function planCompletion(req: ChatRequest, config: Config, decision: Route
       mode: modeUsed,
       maxTokens: resolveMaxTokens(req, config),
       options: requestOptions(req, config),
-      ...(nativeTools ? { tools: nativeTools } : {}),
+      ...(modelTools ? { tools: modelTools } : {}),
       ...(format ? { format } : {}),
     },
   };
@@ -158,7 +153,7 @@ export async function runChatCompletion(
     const extract = (t: TurnResult): ParseResult => {
       if (forcedChoice) return parseForcedOutput(t.content);
       if (t.nativeToolCalls.length) return fromNativeToolCalls(t.nativeToolCalls);
-      return parseToolCalls(t.content);
+      return parseToolCalls(t.content, activeTools);
     };
     let parsed = extract(turn);
     let errors = [...parsed.errors, ...validateToolCalls(parsed.calls, activeTools, ajv)];
@@ -166,7 +161,7 @@ export async function runChatCompletion(
       stats.retries++;
       const retryMessages: OllamaMessage[] = [
         ...messages,
-        { role: 'assistant', content: assistantTranscript(turn) },
+        assistantTurnMessage(turn),
         { role: 'user', content: TOOL_RETRY_PROMPT(errors) },
       ];
       turn = await turnFor(retryMessages);
@@ -262,8 +257,11 @@ export async function runChatCompletion(
 }
 
 /** What the model "said" in a turn, rendered so it can be echoed back before a correction. */
-function assistantTranscript(turn: TurnResult): string {
-  if (!turn.nativeToolCalls.length) return turn.content;
-  const blocks = turn.nativeToolCalls.map((c) => renderToolCallBlock(c.function.name, c.function.arguments));
-  return [turn.content.trim(), ...blocks].filter(Boolean).join('\n');
+/** The turn just produced, replayed to the model as its own message. */
+function assistantTurnMessage(turn: TurnResult): OllamaMessage {
+  return {
+    role: 'assistant',
+    content: turn.content.trim(),
+    ...(turn.nativeToolCalls.length ? { tool_calls: turn.nativeToolCalls } : {}),
+  };
 }
