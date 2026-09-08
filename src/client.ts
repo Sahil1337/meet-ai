@@ -27,6 +27,7 @@ import type {
   RouteDecision,
   Tool,
   ToolCall,
+  ToolChoice,
   Usage,
 } from "./shared/types.ts";
 
@@ -274,10 +275,17 @@ export class QwenProxyClient {
    * *and* the model needs other tools along the way — `response_format`
    * can't be combined with `tools` on this proxy, so the answer's schema is
    * modeled as one more tool instead of a separate constrained-decoding call.
-   * Loops with `tool_choice: 'required'` until the model calls `finalTool`;
-   * every other call is run through `handlers` and its result appended
-   * before the next turn. `finalTool`'s arguments (parsed as JSON, never
-   * passed to `handlers`) are the return value.
+   * Loops until the model calls `finalTool`; every other call is run through
+   * `handlers` and its result appended before the next turn. `finalTool`'s
+   * arguments (parsed as JSON, never passed to `handlers`) are the return
+   * value.
+   *
+   * `toolChoice` defaults to `'required'`, which forces a grammar-constrained
+   * (guaranteed-valid-JSON) tool call every turn, but the proxy also forces
+   * `think:false` on that path regardless of the requested mode — thinking
+   * never runs. `'auto'` lets the requested mode's reasoning actually happen,
+   * at the cost of tool-call parsing falling back to text extraction instead
+   * of a grammar guarantee, and the model may reply without calling any tool.
    */
   async runToolsUntil<T = unknown>(
     messages: ChatMessage[],
@@ -293,6 +301,7 @@ export class QwenProxyClient {
     options: Omit<ChatRequest, "messages" | "tools" | "tool_choice" | "stream"> & {
       maxHops?: number;
       stream?: boolean;
+      toolChoice?: ToolChoice;
       onChunk?: (chunk: ChatChunk) => void;
       onToolCall?: (call: ToolCall, result: unknown) => void;
     } = {},
@@ -302,7 +311,14 @@ export class QwenProxyClient {
     messages: ChatMessage[];
     hops: number;
   }> {
-    const { maxHops = 8, stream, onChunk, onToolCall, ...chatOptions } = options;
+    const {
+      maxHops = 8,
+      stream,
+      toolChoice = "required",
+      onChunk,
+      onToolCall,
+      ...chatOptions
+    } = options;
     const transcript = [...messages];
 
     for (let hops = 1; ; hops++) {
@@ -318,7 +334,7 @@ export class QwenProxyClient {
         ...chatOptions,
         messages: transcript,
         tools,
-        tool_choice: "required",
+        tool_choice: toolChoice,
       };
       const completion = stream
         ? await this.collectStream(request, onChunk)
@@ -330,7 +346,7 @@ export class QwenProxyClient {
         throw new QwenProxyError(
           502,
           "no_tool_call",
-          `tool_choice was 'required' but got finish_reason "${choice.finish_reason}" with no tool calls`,
+          `Expected a tool call (tool_choice: ${JSON.stringify(toolChoice)}) but got finish_reason "${choice.finish_reason}" with no tool calls`,
         );
       }
       transcript.push({

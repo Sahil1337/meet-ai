@@ -4,7 +4,7 @@
  */
 
 import type { QwenProxyClient } from "../src/client.ts";
-import type { Mode } from "../src/shared/types.ts";
+import type { Mode, ToolChoice } from "../src/shared/types.ts";
 
 export type Proposition = {
   id: string;
@@ -34,6 +34,14 @@ export type EvalConfig = {
   maxTokens?: number;
   /** Use the streaming endpoint instead of a single buffered response. */
   stream?: boolean;
+  /**
+   * 'required' (default): grammar-constrained, guaranteed-valid tool call every
+   * turn, but the proxy also forces think:false on this path — thinking never
+   * runs regardless of `mode`. 'auto': lets `mode`'s reasoning actually happen,
+   * at the cost of tool-call parsing falling back to text extraction, and the
+   * model may reply without calling any tool.
+   */
+  toolChoice?: ToolChoice;
   /** Pause after each transcript for a verdict. Only applies in a terminal. */
   manual: boolean;
   /** Ask the proxy for meetiq.upstream_requests and print them. */

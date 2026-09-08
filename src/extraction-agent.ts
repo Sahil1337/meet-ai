@@ -10,7 +10,7 @@
 
 import type { QwenProxyClient } from "./client.ts";
 import { RESOLVE_DATE_TOOL, resolveDateHandler } from "./date-tool.ts";
-import type { ChatChunk, ChatCompletion, ChatMessage, Mode, Tool, ToolCall } from "./shared/types.ts";
+import type { ChatChunk, ChatCompletion, ChatMessage, Mode, Tool, ToolCall, ToolChoice } from "./shared/types.ts";
 
 export const SUBMIT_PROPOSITIONS_TOOL_NAME = "submit_propositions";
 
@@ -35,6 +35,7 @@ export async function extractPropositions<T = { propositions: unknown[] }>(
     mode?: Mode;
     stream?: boolean;
     maxHops?: number;
+    toolChoice?: ToolChoice;
     onChunk?: (chunk: ChatChunk) => void;
     onToolCall?: (call: ToolCall, result: unknown) => void;
   } = {},
@@ -66,6 +67,7 @@ export async function extractPropositions<T = { propositions: unknown[] }>(
       temperature: 0,
       maxHops: options.maxHops ?? 8,
       stream: options.stream,
+      toolChoice: options.toolChoice,
       onChunk: options.onChunk,
       onToolCall: options.onToolCall,
     },

@@ -10,7 +10,8 @@ const MANUAL = true;
 const TRANSCRIPT_FILE: string | undefined = undefined;
 const MODE = "thinking" as const;
 const DEBUG = false;
-const STREAM = false;
+const STREAM = true;
+const TOOL_CHOICE: "required" | "auto" = "auto";
 
 const FIXTURES: Fixture[] = [
   {
@@ -51,6 +52,7 @@ await runEvaluation({
   types: TYPES,
   mode: MODE,
   stream: STREAM,
+  toolChoice: TOOL_CHOICE,
   manual: MANUAL,
   debug: DEBUG,
 });

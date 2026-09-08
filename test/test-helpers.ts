@@ -237,6 +237,7 @@ async function runOne(
     }>(cfg.client, cfg.systemPrompt, fixture.transcript, cfg.schema, {
       mode: cfg.mode,
       stream: cfg.stream,
+      toolChoice: cfg.toolChoice,
       onChunk: (chunk) => {
         if (!cfg.stream) return;
         const delta = chunk.choices[0]?.delta;
@@ -255,7 +256,7 @@ async function runOne(
     printRaw(completion, value);
     const m = completion.meetiq;
     const meta =
-      `mode=${m.mode_used} (${m.router.rule})  finish=${completion.choices[0]?.finish_reason}  hops=${hops}  date_calls=${dateCalls}  ` +
+      `mode=${m.mode_used} (${m.router.rule})  tool_parse=${m.tool_parse}  finish=${completion.choices[0]?.finish_reason}  hops=${hops}  date_calls=${dateCalls}  ` +
       `tokens in=${completion.usage.prompt_tokens} out=${completion.usage.completion_tokens}  retries=${m.retries}` +
       (m.mode_used === "thinking"
         ? `  reasoning_tokens=${completion.usage.completion_tokens_details.reasoning_tokens}`
