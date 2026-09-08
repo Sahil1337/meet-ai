@@ -11,7 +11,7 @@ import {
   type ChatRequest,
   type ChunkDelta,
 } from '../core/mapping.js';
-import { decideMode, requestedMode } from '../core/router.js';
+import { decideMode, requestedMode, type RouteDecision } from '../core/router.js';
 import { SseWriter } from '../core/stream.js';
 import { asyncHandler, toProxyError } from '../middleware.js';
 import { newCompletionId } from '../util/ids.js';
@@ -148,7 +148,7 @@ export function chatRouter(ctx: AppContext): Router {
     body: ChatRequest,
     id: string,
     created: number,
-    decision: Awaited<ReturnType<typeof decideMode>>,
+    decision: RouteDecision,
     signal: AbortSignal,
   ): Promise<CompletionResult> {
     const result = await runChatCompletion(ctx, body, decision, signal);
@@ -161,7 +161,7 @@ export function chatRouter(ctx: AppContext): Router {
     body: ChatRequest,
     id: string,
     created: number,
-    decision: Awaited<ReturnType<typeof decideMode>>,
+    decision: RouteDecision,
     signal: AbortSignal,
   ): Promise<CompletionResult> {
     const chunk = (delta: ChunkDelta, extra: Partial<Parameters<typeof buildChunk>[0]> = {}) =>

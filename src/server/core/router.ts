@@ -23,7 +23,7 @@ export interface RouteDecision {
 export type ClassifierVerdict = 'THINK' | 'FAST' | 'TIMEOUT' | 'ERROR';
 export type Classifier = (lastUserMessage: string) => Promise<ClassifierVerdict>;
 
-export const REASONING_CUES = [
+const REASONING_CUES = [
   'why',
   'explain',
   'compare',
@@ -42,7 +42,7 @@ export const REASONING_CUES = [
 
 const CUE_RE = new RegExp(`\\b(${REASONING_CUES.map((c) => c.replace(/[-]/g, '\\-')).join('|')})`, 'i');
 
-export function findReasoningCue(text: string): string | undefined {
+function findReasoningCue(text: string): string | undefined {
   return CUE_RE.exec(text)?.[1]?.toLowerCase();
 }
 
@@ -73,7 +73,7 @@ export async function decideMode(req: ChatRequest, config: Config, classify: Cla
   return { mode: verdict === 'THINK' ? 'thinking' : 'fast', rule: 'classifier', detail: verdict.toLowerCase() };
 }
 
-export const CLASSIFIER_SYSTEM_PROMPT =
+const CLASSIFIER_SYSTEM_PROMPT =
   "Decide whether answering the user's request needs multi-step reasoning. Reply with exactly one word: FAST or THINK.";
 
 /** Only the head of a long message is sent, so classification stays cheap. */

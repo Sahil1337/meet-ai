@@ -16,7 +16,7 @@ import type { Logger } from '../util/logger.js';
  */
 const NVIDIA_POWER_DIR = '/proc/driver/nvidia/gpus';
 
-export function nvidiaRuntimePmEnabled(): boolean {
+function nvidiaRuntimePmEnabled(): boolean {
   try {
     return readdirSync(NVIDIA_POWER_DIR).some((gpu) =>
       /Runtime D3 status:\s+Enabled/.test(readFileSync(`${NVIDIA_POWER_DIR}/${gpu}/power`, 'utf8')),

@@ -58,7 +58,8 @@ src/
       stream.ts       SSE writer in OpenAI chunk format
       queue.ts        bounded concurrency with a wait timeout
       errors.ts       ProxyError -> OpenAI error envelope
-    util/             tokens (chars/4 estimate), ids, logger
+    util/             tokens (chars/4 estimate), ids, logger, json (lenient
+                      parse/repair, isRecord, errorMessage)
 examples/             one runnable script per use case, built on the client
 ```
 

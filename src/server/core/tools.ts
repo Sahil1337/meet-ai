@@ -3,8 +3,9 @@ import { invalidRequest } from './errors.js';
 import type { Tool, ToolChoice } from './mapping.js';
 import type { ToolCall } from '../../shared/types.js';
 import type { OllamaToolCall } from './ollama.js';
-import { splitThink } from './thinking.js';
+import { partialTagSuffix, splitThink } from './thinking.js';
 import { newToolCallId } from '../util/ids.js';
+import { isRecord, errorMessage, parseJsonLenient } from '../util/json.js';
 
 // ---------------------------------------------------------------------------
 // Schema slimming: what the model reads vs. what we validate against
@@ -30,7 +31,7 @@ const SCHEMA_MAP_KEYS = new Set(['properties', 'patternProperties', '$defs', 'de
  * every keyword costs context tokens on every request; validation still
  * uses the full schema.
  */
-export function slimSchema(schema: unknown): unknown {
+function slimSchema(schema: unknown): unknown {
   if (Array.isArray(schema)) return schema.map(slimSchema);
   if (!isRecord(schema)) return schema;
   const out: Record<string, unknown> = {};
@@ -54,6 +55,48 @@ export function slimTools(tools: Tool[]): Tool[] {
       ...(t.function.parameters ? { parameters: slimSchema(t.function.parameters) as Record<string, unknown> } : {}),
     },
   }));
+}
+
+// ---------------------------------------------------------------------------
+// Streaming
+// ---------------------------------------------------------------------------
+
+const TOOL_CALL_OPEN = '<tool_call>';
+
+/**
+ * Keeps `<tool_call>` text out of a content stream. Ollama normally returns
+ * tool calls structurally, but when it does not the tags arrive as ordinary
+ * content and the caller would see them as prose beside the parsed call.
+ * Content fed through this has any partial opening tag held back, and stops
+ * entirely once a real one appears; the tail is parsed as usual.
+ */
+export class ToolCallGate {
+  private buffer = '';
+  private stopped = false;
+
+  /** The part of `chunk` that is safe to emit now. */
+  push(chunk: string): string {
+    if (this.stopped) return '';
+    this.buffer += chunk;
+    const at = this.buffer.indexOf(TOOL_CALL_OPEN);
+    if (at >= 0) {
+      this.stopped = true;
+      const before = this.buffer.slice(0, at);
+      this.buffer = '';
+      return before;
+    }
+    const hold = partialTagSuffix(this.buffer, TOOL_CALL_OPEN);
+    const emit = this.buffer.slice(0, this.buffer.length - hold);
+    this.buffer = this.buffer.slice(this.buffer.length - hold);
+    return emit;
+  }
+
+  /** Held-back text, once the turn is known to contain no tool call. */
+  flush(): string {
+    const rest = this.stopped ? '' : this.buffer;
+    this.buffer = '';
+    return rest;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -105,7 +148,7 @@ export function parseToolCalls(text: string, tools?: Tool[]): ParseResult {
     try {
       result.calls.push(FUNCTION_RE.test(raw) ? parseXmlCall(raw, tools) : toParsedCall(parseJsonLenient(raw)));
     } catch (err) {
-      result.errors.push(`${err instanceof Error ? err.message : String(err)} in: ${raw}`);
+      result.errors.push(`${errorMessage(err)} in: ${raw}`);
     }
   }
   return result;
@@ -174,35 +217,6 @@ function toParsedCall(value: unknown): ParsedToolCall {
   return { name: value['name'], arguments: args };
 }
 
-const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
-
-export function parseJsonLenient(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return repairJson(text);
-  }
-}
-
-/** One best-effort repair pass: code fences, trailing commas, Python literals, single quotes. */
-export function repairJson(text: string): unknown {
-  let t = text
-    .trim()
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```$/, '');
-  t = t.replace(/,\s*([}\]])/g, '$1');
-  t = t.replace(/\b(True|False|None)\b/g, (m) => ({ True: 'true', False: 'false', None: 'null' })[m] ?? m);
-  try {
-    return JSON.parse(t);
-  } catch {
-    // Fall through to quote repair.
-  }
-  const requoted = t.includes('"')
-    ? t.replace(/'((?:[^'\\]|\\.)*)'/g, (_, s: string) => `"${s.replace(/"/g, '\\"')}"`)
-    : t.replace(/'/g, '"');
-  return JSON.parse(requoted);
-}
-
 export function fromNativeToolCalls(native: OllamaToolCall[]): ParseResult {
   const result: ParseResult = { content: null, calls: [], errors: [] };
   for (const call of native) {
@@ -213,7 +227,7 @@ export function fromNativeToolCalls(native: OllamaToolCall[]): ParseResult {
           : call.function.arguments;
       result.calls.push(toParsedCall({ name: call.function.name, arguments: args }));
     } catch (err) {
-      result.errors.push(`${err instanceof Error ? err.message : String(err)} in native call ${call.function.name}`);
+      result.errors.push(`${errorMessage(err)} in native call ${call.function.name}`);
     }
   }
   return result;
@@ -279,6 +293,6 @@ export function parseForcedOutput(content: string): ParseResult {
   try {
     return { content: null, calls: [toParsedCall(parseJsonLenient(content))], errors: [] };
   } catch (err) {
-    return { content: null, calls: [], errors: [`${err instanceof Error ? err.message : String(err)} in: ${content}`] };
+    return { content: null, calls: [], errors: [`${errorMessage(err)} in: ${content}`] };
   }
 }

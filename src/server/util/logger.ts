@@ -174,7 +174,7 @@ const EVENT_RENDERERS: Record<string, (rec: Record<string, unknown>) => string |
   'chat.completion failed': renderFailure,
 };
 
-export function formatPretty(line: string): string {
+function formatPretty(line: string): string {
   let rec: Record<string, unknown>;
   try {
     rec = JSON.parse(line) as Record<string, unknown>;
@@ -196,7 +196,7 @@ export function formatPretty(line: string): string {
   const level = LEVELS[Number(rec['level'])] ?? String(rec['level']);
   const head = `${stamp} ${level} ${bold(msg)}`;
   const blockKeys = new Set(BLOCKS.map(([k]) => k));
-  const fields = Object.entries(rec)
+  const fieldText = Object.entries(rec)
     .filter(([k]) => !HIDDEN.has(k) && !blockKeys.has(k))
     .map(([k, v]) => `${dim(k + '=')}${typeof v === 'string' ? v : JSON.stringify(v)}`)
     .join(' ');
@@ -204,7 +204,7 @@ export function formatPretty(line: string): string {
     const body = renderBlock(key, rec[key]);
     return body === undefined ? undefined : block(title, colour, body);
   }).filter((b): b is string => b !== undefined);
-  return [fields ? `${head} ${fields}` : head, ...blocks].join('\n');
+  return [fieldText ? `${head} ${fieldText}` : head, ...blocks].join('\n');
 }
 
 function prettyDestination(): Writable {

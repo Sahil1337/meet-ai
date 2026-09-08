@@ -43,7 +43,6 @@ export interface OllamaChatChunk {
   prompt_eval_count?: number;
   eval_count?: number;
   /** Nanoseconds, as reported by Ollama. */
-  total_duration?: number;
   load_duration?: number;
   prompt_eval_duration?: number;
   eval_duration?: number;
@@ -52,7 +51,6 @@ export interface OllamaChatChunk {
 export interface OllamaRunningModel {
   name: string;
   model: string;
-  size?: number;
   size_vram?: number;
   context_length?: number;
 }

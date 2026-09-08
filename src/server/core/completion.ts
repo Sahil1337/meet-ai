@@ -6,10 +6,11 @@ import {
   resolveMaxTokens,
   toOllamaMessages,
   type ChatRequest,
+  type CompletionFields,
   type Tool,
   type ToolChoice,
 } from './mapping.js';
-import type { FinishReason, ProxyMeta, ToolCall, ToolParse, Usage } from '../../shared/types.js';
+import type { FinishReason, ToolCall, ToolParse } from '../../shared/types.js';
 import type { OllamaClient, OllamaMessage } from './ollama.js';
 import { requestedMode, type RouteDecision } from './router.js';
 import { resolveFormat, validateStructuredOutput } from './structured.js';
@@ -21,6 +22,7 @@ import {
   parseForcedOutput,
   parseToolCalls,
   slimTools,
+  ToolCallGate,
   toOpenAIToolCalls,
   validateToolCalls,
   type ParseResult,
@@ -37,14 +39,7 @@ export interface StreamDelta extends Delta {
   toolCalls?: ToolCall[];
 }
 
-export interface CompletionResult {
-  content: string | null;
-  reasoning: string | null;
-  toolCalls: ToolCall[];
-  finishReason: FinishReason;
-  usage: Usage;
-  meta: ProxyMeta;
-}
+export interface CompletionResult extends CompletionFields {}
 
 const TOOL_RETRY_PROMPT = (errors: string[]) =>
   `Your previous tool call was invalid: ${errors.join('; ')}. Emit a corrected <tool_call>.`;
@@ -57,13 +52,18 @@ export interface CompletionPlan {
   activeTools: Tool[] | undefined;
   forcedChoice: ToolChoice | undefined;
   modeUsed: Mode;
-  /** Streaming must buffer when the output has to be validated first. */
+  /**
+   * Streaming must buffer when the whole body has to be seen first: a forced
+   * call is decoded into `content`, and structured output can be replaced
+   * outright by a validation retry. Tool calls stream fine — the backend
+   * hands them over complete, so they are validated and emitted as one delta.
+   */
   buffered: boolean;
   /** Input for the first turn: what the model actually sees. */
   turn: TurnInput;
 }
 
-export function planCompletion(req: ChatRequest, config: Config, decision: RouteDecision): CompletionPlan {
+function planCompletion(req: ChatRequest, config: Config, decision: RouteDecision): CompletionPlan {
   const activeTools: Tool[] | undefined = req.tool_choice === 'none' || !req.tools?.length ? undefined : req.tools;
   const forcedChoice = activeTools && req.tool_choice && isForcedChoice(req.tool_choice) ? req.tool_choice : undefined;
   const structuredFormat = resolveFormat(req.response_format);
@@ -80,7 +80,7 @@ export function planCompletion(req: ChatRequest, config: Config, decision: Route
     activeTools,
     forcedChoice,
     modeUsed,
-    buffered: activeTools !== undefined || structuredFormat !== undefined,
+    buffered: forcedChoice !== undefined || structuredFormat !== undefined,
     turn: {
       messages,
       mode: modeUsed,
@@ -103,8 +103,9 @@ export function firstUpstreamRequest(req: ChatRequest, config: Config, decision:
  * caller (so it can set headers first); this function handles tool calling,
  * structured output, validation retries and usage accounting.
  *
- * `onDelta` enables streaming. Responses that must be validated (tools or
- * response_format) are buffered and delivered as a single delta at the end.
+ * `onDelta` enables streaming. Reasoning and content stream as they arrive;
+ * tool calls are held only long enough to validate. Forced calls and
+ * structured output are buffered into a single delta at the end.
  */
 export async function runChatCompletion(
   deps: CompletionDeps,
@@ -141,8 +142,24 @@ export async function runChatCompletion(
     return turn;
   };
 
-  const turnFor = (msgs: OllamaMessage[]) =>
-    runTurn(client, config, { ...turnInput, messages: msgs }, signal, streamDelta).then(track);
+  const turnFor = async (msgs: OllamaMessage[]): Promise<TurnResult> => {
+    // A fresh gate per turn: a retry restarts the content stream.
+    const gate = streamDelta && activeTools ? new ToolCallGate() : undefined;
+    const onTurnDelta: ((d: Delta) => void) | undefined = !streamDelta
+      ? undefined
+      : gate
+        ? (d) => {
+            const content = d.content ? gate.push(d.content) : '';
+            if (content || d.reasoning) {
+              streamDelta({ ...(content ? { content } : {}), ...(d.reasoning ? { reasoning: d.reasoning } : {}) });
+            }
+          }
+        : streamDelta;
+    const turn = await runTurn(client, config, { ...turnInput, messages: msgs }, signal, onTurnDelta);
+    const tail = gate?.flush();
+    if (streamDelta && tail) streamDelta({ content: tail });
+    return track(turn);
+  };
 
   let turn = await turnFor(messages);
   let toolParse: ToolParse = 'none';
@@ -159,12 +176,11 @@ export async function runChatCompletion(
     let errors = [...parsed.errors, ...validateToolCalls(parsed.calls, activeTools, ajv)];
     if (errors.length) {
       stats.retries++;
-      const retryMessages: OllamaMessage[] = [
+      turn = await turnFor([
         ...messages,
         assistantTurnMessage(turn),
         { role: 'user', content: TOOL_RETRY_PROMPT(errors) },
-      ];
-      turn = await turnFor(retryMessages);
+      ]);
       parsed = extract(turn);
       errors = [...parsed.errors, ...validateToolCalls(parsed.calls, activeTools, ajv)];
       if (errors.length) {
@@ -173,10 +189,7 @@ export async function runChatCompletion(
           'tool_call_invalid',
           `Model produced an invalid tool call after one retry: ${errors.join('; ')}`,
           'upstream_error',
-          {
-            raw: turn.content,
-            errors,
-          },
+          { raw: turn.content, errors },
         );
       }
     }
@@ -193,12 +206,11 @@ export async function runChatCompletion(
     let check = validateStructuredOutput(turn.content, req.response_format, ajv);
     if (!check.ok) {
       stats.retries++;
-      const retryMessages: OllamaMessage[] = [
+      turn = await turnFor([
         ...messages,
         { role: 'assistant', content: turn.content },
         { role: 'user', content: STRUCTURED_RETRY_PROMPT(check.error) },
-      ];
-      turn = await turnFor(retryMessages);
+      ]);
       check = validateStructuredOutput(turn.content, req.response_format, ajv);
       if (!check.ok) {
         throw new ProxyError(
@@ -206,10 +218,7 @@ export async function runChatCompletion(
           'structured_output_invalid',
           `Model output did not match response_format after one retry: ${check.error}`,
           'upstream_error',
-          {
-            raw: turn.content,
-            error: check.error,
-          },
+          { raw: turn.content, error: check.error },
         );
       }
     }
@@ -218,12 +227,17 @@ export async function runChatCompletion(
 
   const reasoning = turn.thinking.trim() || null;
   const finishReason: FinishReason = toolCalls.length ? 'tool_calls' : turn.doneReason === 'length' ? 'length' : 'stop';
-  if (buffered && onDelta) {
-    onDelta({
-      ...(reasoning ? { reasoning } : {}),
-      ...(content ? { content } : {}),
-      ...(toolCalls.length ? { toolCalls } : {}),
-    });
+  if (onDelta) {
+    if (buffered) {
+      onDelta({
+        ...(reasoning ? { reasoning } : {}),
+        ...(content ? { content } : {}),
+        ...(toolCalls.length ? { toolCalls } : {}),
+      });
+    } else if (toolCalls.length) {
+      // Reasoning and content already streamed; the calls waited on validation.
+      onDelta({ toolCalls });
+    }
   }
 
   return {
@@ -256,7 +270,6 @@ export async function runChatCompletion(
   };
 }
 
-/** What the model "said" in a turn, rendered so it can be echoed back before a correction. */
 /** The turn just produced, replayed to the model as its own message. */
 function assistantTurnMessage(turn: TurnResult): OllamaMessage {
   return {

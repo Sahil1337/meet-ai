@@ -13,7 +13,7 @@ const OPEN = '<think>';
 const CLOSE = '</think>';
 
 /** Length of the longest prefix of `tag` that `text` ends with (0 if none). */
-function partialTagSuffix(text: string, tag: string): number {
+export function partialTagSuffix(text: string, tag: string): number {
   for (let k = Math.min(tag.length - 1, text.length); k > 0; k--) {
     if (text.endsWith(tag.slice(0, k))) return k;
   }
@@ -25,7 +25,7 @@ function partialTagSuffix(text: string, tag: string): number {
  * and everything else to `content`. Safe to feed one token at a time: a tag
  * split across chunks is held back until it resolves.
  */
-export class ThinkSplitter {
+class ThinkSplitter {
   private buffer = '';
   private inside = false;
 
@@ -89,7 +89,7 @@ export interface Delta {
   reasoning?: string;
 }
 
-export interface UpstreamTiming {
+interface UpstreamTiming {
   /** Model (re)load time, ms. Non-zero means Ollama reloaded the model for this call. */
   loadMs: number;
   promptEvalMs: number;

@@ -1,8 +1,9 @@
+import type { Request } from 'express';
 import { Router } from 'express';
 import type { AppContext } from '../app.js';
 import { firstUpstreamRequest } from '../core/completion.js';
-import { estimatePromptTokens, lastUserText, parseChatRequest } from '../core/mapping.js';
-import { decideMode, requestedMode } from '../core/router.js';
+import { estimatePromptTokens, lastUserText, parseChatRequest, type ChatRequest } from '../core/mapping.js';
+import { decideMode, requestedMode, type RouteDecision } from '../core/router.js';
 import { asyncHandler } from '../middleware.js';
 import { estimateTokens } from '../util/tokens.js';
 
@@ -14,19 +15,27 @@ import { estimateTokens } from '../util/tokens.js';
 export function routeRouter(ctx: AppContext): Router {
   const router = Router();
 
+  async function routeRequest(req: Request): Promise<{ body: ChatRequest; decision: RouteDecision }> {
+    const body = parseChatRequest(req.body);
+    const decision = await ctx.queue.run(() => decideMode(body, ctx.config, ctx.classify));
+    return { body, decision };
+  }
+
   router.post(
     '/inspect',
     asyncHandler(async (req, res) => {
-      const body = parseChatRequest(req.body);
-      const decision = await ctx.queue.run(() => decideMode(body, ctx.config, ctx.classify));
+      const { body, decision } = await routeRequest(req);
       const { plan, request } = firstUpstreamRequest(body, ctx.config, decision);
       res.setHeader('x-meetiq-mode', decision.mode);
+      const upstreamPromptEstimate = estimateTokens(
+        JSON.stringify(request.messages) + JSON.stringify(request.tools ?? ''),
+      );
       res.json({
         router: decision,
         mode_used: plan.modeUsed,
         buffered_streaming: plan.buffered,
         tool_path: plan.forcedChoice ? 'forced' : plan.activeTools ? 'native' : 'none',
-        estimated_prompt_tokens: estimateTokens(JSON.stringify(request.messages) + JSON.stringify(request.tools ?? '')),
+        estimated_prompt_tokens: upstreamPromptEstimate,
         upstream_request: request,
       });
     }),
@@ -35,8 +44,7 @@ export function routeRouter(ctx: AppContext): Router {
   router.post(
     '/route',
     asyncHandler(async (req, res) => {
-      const body = parseChatRequest(req.body);
-      const decision = await ctx.queue.run(() => decideMode(body, ctx.config, ctx.classify));
+      const { body, decision } = await routeRequest(req);
       res.setHeader('x-meetiq-mode', decision.mode);
       res.json({
         ...decision,

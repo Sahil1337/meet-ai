@@ -3,6 +3,7 @@ import type { Config } from '../config.js';
 import { invalidRequest } from './errors.js';
 import type { OllamaMessage, OllamaOptions } from './ollama.js';
 import { estimateJsonTokens, estimateTokens } from '../util/tokens.js';
+import { isRecord } from '../util/json.js';
 import type {
   ChatChunk,
   ChatCompletion,
@@ -37,7 +38,7 @@ const messageSchema = z.looseObject({
   tool_call_id: z.string().optional(),
 });
 
-export const toolSchema = z.object({
+const toolSchema = z.object({
   type: z.literal('function'),
   function: z.object({
     name: z.string().min(1),
@@ -65,9 +66,9 @@ const responseFormatSchema = z.discriminatedUnion('type', [
   }),
 ]);
 
-export const MODES = ['thinking', 'fast', 'adaptive'] as const;
+const MODES = ['thinking', 'fast', 'adaptive'] as const;
 
-export const chatRequestSchema = z.looseObject({
+const chatRequestSchema = z.looseObject({
   model: z.string().optional(),
   messages: z.array(messageSchema).min(1),
   tools: z.array(toolSchema).optional(),
@@ -115,7 +116,7 @@ export function parseChatRequest(body: unknown): ChatRequest {
 // Messages
 // ---------------------------------------------------------------------------
 
-export function messageText(content: ChatMessage['content']): string {
+function messageText(content: ChatMessage['content']): string {
   if (content === undefined || content === null) return '';
   if (typeof content === 'string') return content;
   return content
@@ -132,9 +133,7 @@ export function messageText(content: ChatMessage['content']): string {
 function toArgumentMap(raw: string): Record<string, unknown> {
   try {
     const parsed: unknown = JSON.parse(raw);
-    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : {};
+    return isRecord(parsed) ? parsed : {};
   } catch {
     return {};
   }
@@ -218,16 +217,20 @@ export function resolveMaxTokens(req: ChatRequest, config: Config): number {
 // Responses
 // ---------------------------------------------------------------------------
 
-export interface CompletionParts {
-  id: string;
-  created: number;
-  model: string;
+/** The result of one chat completion, before it is placed in a wire envelope. */
+export interface CompletionFields {
   content: string | null;
   reasoning: string | null;
   toolCalls: ToolCall[];
   finishReason: FinishReason;
   usage: Usage;
   meta: ProxyMeta;
+}
+
+interface CompletionParts extends CompletionFields {
+  id: string;
+  created: number;
+  model: string;
 }
 
 export function buildCompletion(p: CompletionParts): ChatCompletion {
