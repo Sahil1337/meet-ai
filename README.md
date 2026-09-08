@@ -6,7 +6,7 @@
 A minimal OpenAI-compatible HTTP proxy in front of a local [Ollama](https://ollama.com) running **Qwen3.5-4B**. Point any OpenAI SDK at it and get three things the raw model doesn't reliably give you:
 
 - **Adaptive thinking** — picks `think:false`/`think:true` per request. Reasoning comes back in `reasoning_content`, never mixed into `content`.
-- **Tool calls that always validate** — native Ollama tool calls when available, a Hermes-style `<tool_call>` parser as fallback, constrained decoding when a tool is forced, and ajv validation with one retry. Never a silently wrong call.
+- **Tool calls that always validate** — native Ollama tool calls when available, a `<tool_call>` parser reading both Qwen XML and Hermes JSON as fallback, constrained decoding when a tool is forced, and ajv validation with one retry. Never a silently wrong call.
 - **Structured output that always validates** — `response_format` maps to Ollama's `format`, is validated against your schema, retried once, then rejected with a 502.
 
 It also **boots and supervises `ollama serve` itself**, so the tuning that matters on a small GPU (context length, KV cache quantization, flash attention, parallelism, GPU layers) lives in this repo's `.env` instead of a system service.
