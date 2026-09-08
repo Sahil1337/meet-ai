@@ -108,6 +108,12 @@ personal experiments.
   Qwen XML (`<function=name><parameter=key>`, what Qwen3.5's own template
   emits) and Hermes JSON. Do not add a third without checking real model
   output for it.
+- `tools` + `response_format` compile into one `oneOf` grammar, so a turn can
+  call a tool or answer in the caller's schema. Ollama often still parses the
+  call branch structurally (`tool_parse: "native"`); `parseUnionOutput` covers
+  the case where it does not, discriminating on a declared tool name plus an
+  object `arguments`. Grammar-constrained decoding does not block thinking —
+  only forced `tool_choice` pins the mode to fast, and that is policy.
 - Never hand-render assistant `tool_calls` into prompt text. Pass them
   through structurally so the model's chat template renders the dialect it
   was trained on; the two drifted apart once already.

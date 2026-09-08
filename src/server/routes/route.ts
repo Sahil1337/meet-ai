@@ -34,7 +34,7 @@ export function routeRouter(ctx: AppContext): Router {
         router: decision,
         mode_used: plan.modeUsed,
         buffered_streaming: plan.buffered,
-        tool_path: plan.forcedChoice ? 'forced' : plan.activeTools ? 'native' : 'none',
+        tool_path: plan.forcedChoice ? 'forced' : plan.union ? 'union' : plan.activeTools ? 'native' : 'none',
         estimated_prompt_tokens: upstreamPromptEstimate,
         upstream_request: request,
       });

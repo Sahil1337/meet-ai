@@ -289,6 +289,36 @@ export function forcedToolFormat(tools: Tool[], choice: ToolChoice): Record<stri
   return { oneOf: tools.map(schemaForTool) };
 }
 
+/**
+ * Grammar for a turn that may either call a tool or answer with the caller's
+ * schema. Ollama constrains decoding to one branch of the union, so the model
+ * chooses between calling and answering and cannot produce anything else.
+ */
+export function unionFormat(tools: Tool[], responseSchema: Record<string, unknown>): Record<string, unknown> {
+  return { oneOf: [...tools.map(schemaForTool), responseSchema] };
+}
+
+/**
+ * Reads a union turn, which is bare JSON in either branch. A tool call is an
+ * object whose `name` is one of the declared tools and whose `arguments` is an
+ * object; anything else is the caller's response shape and is handed back as
+ * content so the structured-output path validates it.
+ */
+export function parseUnionOutput(content: string, tools: Tool[]): ParseResult {
+  const asResponse: ParseResult = { content: content.trim() || null, calls: [], errors: [] };
+  let value: unknown;
+  try {
+    value = parseJsonLenient(content);
+  } catch {
+    return asResponse;
+  }
+  if (!isRecord(value)) return asResponse;
+  const name = value['name'];
+  const args = value['arguments'];
+  if (typeof name !== 'string' || !tools.some((t) => t.function.name === name) || !isRecord(args)) return asResponse;
+  return { content: null, calls: [{ name, arguments: args }], errors: [] };
+}
+
 export function parseForcedOutput(content: string): ParseResult {
   try {
     return { content: null, calls: [toParsedCall(parseJsonLenient(content))], errors: [] };

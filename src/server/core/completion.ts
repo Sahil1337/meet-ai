@@ -17,6 +17,8 @@ import { resolveFormat, validateStructuredOutput } from './structured.js';
 import { runTurn, turnRequest, type Delta, type Mode, type TurnInput, type TurnResult } from './thinking.js';
 import {
   forcedToolFormat,
+  unionFormat,
+  parseUnionOutput,
   fromNativeToolCalls,
   isForcedChoice,
   parseForcedOutput,
@@ -59,6 +61,8 @@ export interface CompletionPlan {
    * hands them over complete, so they are validated and emitted as one delta.
    */
   buffered: boolean;
+  /** Tools and `response_format` were both sent, so the grammar is a union of both. */
+  union: boolean;
   /** Input for the first turn: what the model actually sees. */
   turn: TurnInput;
 }
@@ -74,12 +78,21 @@ function planCompletion(req: ChatRequest, config: Config, decision: RouteDecisio
     activeTools && !forcedChoice ? (config.TOOL_SCHEMA_SLIM ? slimTools(activeTools) : activeTools) : undefined;
   const messages = toOllamaMessages(req.messages);
   // `format` becomes a decoding grammar, not prompt text, so it is never slimmed.
-  const format = forcedChoice && activeTools ? forcedToolFormat(activeTools, forcedChoice) : structuredFormat;
+  // `json_object` has no schema to union with, so it keeps the plain path.
+  const responseSchema = typeof structuredFormat === 'string' ? undefined : structuredFormat;
+  const unionTools = activeTools && !forcedChoice && responseSchema ? activeTools : undefined;
+  const format =
+    forcedChoice && activeTools
+      ? forcedToolFormat(activeTools, forcedChoice)
+      : unionTools && responseSchema
+        ? unionFormat(unionTools, responseSchema)
+        : structuredFormat;
 
   return {
     activeTools,
     forcedChoice,
     modeUsed,
+    union: unionTools !== undefined,
     buffered: forcedChoice !== undefined || structuredFormat !== undefined,
     turn: {
       messages,
@@ -115,7 +128,15 @@ export async function runChatCompletion(
   onDelta?: (delta: StreamDelta) => void,
 ): Promise<CompletionResult> {
   const { client, config, ajv } = deps;
-  const { activeTools, forcedChoice, modeUsed, buffered, turn: turnInput } = planCompletion(req, config, decision);
+  const {
+    activeTools,
+    forcedChoice,
+    modeUsed,
+    union,
+    buffered,
+    turn: turnInput,
+  } = planCompletion(req, config, decision);
+  const unionTools = union ? activeTools : undefined;
   const messages = turnInput.messages;
   const streamDelta = buffered ? undefined : onDelta;
 
@@ -170,6 +191,7 @@ export async function runChatCompletion(
     const extract = (t: TurnResult): ParseResult => {
       if (forcedChoice) return parseForcedOutput(t.content);
       if (t.nativeToolCalls.length) return fromNativeToolCalls(t.nativeToolCalls);
+      if (unionTools) return parseUnionOutput(t.content, unionTools);
       return parseToolCalls(t.content, activeTools);
     };
     let parsed = extract(turn);
@@ -194,7 +216,7 @@ export async function runChatCompletion(
       }
     }
     if (parsed.calls.length) {
-      toolParse = forcedChoice ? 'forced' : turn.nativeToolCalls.length ? 'native' : 'fallback';
+      toolParse = forcedChoice ? 'forced' : turn.nativeToolCalls.length ? 'native' : unionTools ? 'union' : 'fallback';
       toolCalls = toOpenAIToolCalls(parsed.calls);
       content = parsed.content;
     } else {

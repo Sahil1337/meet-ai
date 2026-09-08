@@ -66,7 +66,7 @@ export type ChatRequest = {
 // ---------------------------------------------------------------------------
 
 export type FinishReason = 'stop' | 'length' | 'tool_calls';
-export type ToolParse = 'native' | 'fallback' | 'forced' | 'none';
+export type ToolParse = 'native' | 'fallback' | 'forced' | 'union' | 'none';
 
 export interface Usage {
   prompt_tokens: number;
