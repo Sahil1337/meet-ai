@@ -5,13 +5,8 @@
 
 import { createInterface } from "node:readline/promises";
 import { QwenProxyClient, QwenProxyError } from "../src/client.ts";
-import {
-  formatDateContext,
-  resolveDatesWithModel,
-  scanTranscriptDates,
-  type Resolved,
-} from "../src/date-tool.ts";
-import type { ChatCompletion, ChatMessage } from "../src/shared/types.ts";
+import { extractPropositions } from "../src/extraction-agent.ts";
+import type { ChatCompletion } from "../src/shared/types.ts";
 import type { EvalConfig, Fixture, Outcome, Proposition } from "./types.ts";
 
 const tty = process.stdout.isTTY ?? false;
@@ -99,168 +94,48 @@ function printRaw(completion: ChatCompletion, parsed: unknown): void {
   console.log(json(parsed));
 }
 
-/**
- * Resolves the transcript's relative day expressions and returns the DATE
- * CONTEXT block to append to the transcript message ("" when there is nothing
- * to resolve). A failed tool pass degrades to the local scan instead of
- * failing the transcript.
- */
-async function resolveDatesFor(
-  cfg: EvalConfig,
-  fixture: Fixture,
-  warnings: string[],
-): Promise<string> {
-  const how = cfg.dateResolution ?? "off";
-  if (how === "off") return "";
-
-  const started = performance.now();
-  let resolved: Resolved[] = [];
-  let detail = "local scan";
-  if (how === "tool") {
-    try {
-      const pass = await resolveDatesWithModel(cfg.client, fixture.transcript, {
-        mode: "fast",
-      });
-      resolved = pass.resolved;
-      detail = `resolve_date · ${pass.calls} call(s), ${pass.hops} hop(s)`;
-      for (const f of pass.failed)
-        warnings.push(`resolve_date could not resolve ${f}`);
-      if (pass.calls === 0)
-        warnings.push(
-          "the model called resolve_date zero times; dates came from the local scan",
-        );
-    } catch (err) {
-      resolved = scanTranscriptDates(fixture.transcript);
-      detail = "local scan (tool pass failed)";
-      warnings.push(
-        `date tool pass failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  } else {
-    resolved = scanTranscriptDates(fixture.transcript);
+function describeError(err: unknown): string {
+  let error = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+  if (err instanceof QwenProxyError) {
+    error = `${err.code} (HTTP ${err.status}): ${err.message}`;
+    if (err.status === 524)
+      error += " — Cloudflare edge gave up after 100 s; the proxy did not answer in time.";
+    if (err.status === 530)
+      error += " — Cloudflare cannot reach the Nitro; cloudflared or the laptop is down.";
   }
-
-  const ms = Math.round(performance.now() - started);
-  console.log(
-    `\n${bold("  DATES")}  ${dim(`${detail} · ${resolved.length} resolved in ${ms} ms`)}`,
-  );
-  if (resolved.length === 0)
-    console.log(dim("    no relative day expressions found"));
-  for (const r of resolved) {
-    console.log(
-      `    ${r.expression.padEnd(18)} ${dim(`ref ${r.reference_date}`)} → ${bold(r.formatted)}  ${dim(r.source)}`,
-    );
-  }
-  return formatDateContext(resolved);
+  return error;
 }
 
-async function runOne(
+function failOutcome(
+  fixture: Fixture,
+  warnings: string[],
+  error: string,
+  ms: number,
+  width: number,
+): Outcome {
+  console.log(`\n${red("  ERROR")}\n${wrap(error, "    ", width)}`);
+  return {
+    name: fixture.name,
+    status: "fail",
+    count: 0,
+    verbatim: 0,
+    warnings,
+    error,
+    ms,
+    verdict: "-",
+  };
+}
+
+/** Prints the propositions + CHECKS block and builds the final Outcome. */
+function finishOutcome(
   cfg: EvalConfig,
   fixture: Fixture,
-  index: number,
-  total: number,
-): Promise<Outcome> {
+  propositions: Proposition[],
+  warnings: string[],
+  meta: string,
+  ms: number,
+): Outcome {
   const width = cfg.wrapWidth ?? 100;
-  const warnings: string[] = [];
-  console.log(
-    `\n${bold(`═══ ${index + 1}/${total}  ${fixture.name} `.padEnd(width, "═"))}\n`,
-  );
-  console.log(bold("  TRANSCRIPT"));
-  console.log(wrap(fixture.transcript, "    ", width));
-
-  const dateBlock = await resolveDatesFor(cfg, fixture, warnings);
-  const userContent = dateBlock
-    ? `${fixture.transcript}\n\n${dateBlock}`
-    : fixture.transcript;
-
-  const messages: ChatMessage[] = [
-    { role: "system", content: cfg.systemPrompt },
-    { role: "user", content: userContent },
-  ];
-  console.log(`\n${bold("  REQUEST")}  ${dim("POST /v1/chat/completions")}`);
-  console.log(
-    json({
-      mode: cfg.mode,
-      temperature: 0,
-      response_format: {
-        type: "json_schema",
-        json_schema: { name: "extraction", schema: "<SCHEMA>" },
-      },
-      messages: [
-        { role: "system", content: "<SYSTEM_PROMPT, printed once above>" },
-        { role: "user", content: userContent },
-      ],
-      stream: !!cfg.stream,
-      ...(cfg.debug ? { debug: true } : {}),
-    }),
-  );
-
-  const started = performance.now();
-  let propositions: Proposition[];
-  let meta = "";
-  try {
-    const extractOptions = {
-      mode: cfg.mode,
-      // max_tokens: cfg.maxTokens,
-      temperature: 0,
-      ...(cfg.debug ? { debug: true } : {}),
-    };
-    const { value, completion } = cfg.stream
-      ? await cfg.client.extractStream<{ propositions: Proposition[] }>(
-          messages,
-          cfg.schema,
-          extractOptions,
-          (chunk) => {
-            const delta = chunk.choices[0]?.delta;
-            if (delta?.reasoning_content) process.stdout.write(dim("."));
-            if (delta?.content) process.stdout.write(dim("+"));
-          },
-        )
-      : await cfg.client.extract<{ propositions: Proposition[] }>(
-          messages,
-          cfg.schema,
-          extractOptions,
-        );
-    if (cfg.stream) console.log();
-    propositions = value.propositions;
-    printRaw(completion, value);
-    const m = completion.meetiq;
-    meta =
-      `mode=${m.mode_used} (${m.router.rule})  finish=${completion.choices[0]?.finish_reason}  ` +
-      `tokens in=${completion.usage.prompt_tokens} out=${completion.usage.completion_tokens}  ` +
-      `prefill=${m.timing.prompt_eval_ms}ms  decode=${m.timing.eval_tps.toFixed(1)} tok/s  retries=${m.retries}` +
-      (m.mode_used === "thinking"
-        ? `  reasoning_tokens=${completion.usage.completion_tokens_details.reasoning_tokens}`
-        : "");
-    if (completion.choices[0]?.finish_reason === "length")
-      warnings.push("output hit maxTokens; propositions may be cut off");
-  } catch (err) {
-    const ms = Math.round(performance.now() - started);
-    let error =
-      err instanceof Error ? `${err.name}: ${err.message}` : String(err);
-    if (err instanceof QwenProxyError) {
-      error = `${err.code} (HTTP ${err.status}): ${err.message}`;
-      if (err.status === 524)
-        error +=
-          " — Cloudflare edge gave up after 100 s; the proxy did not answer in time.";
-      if (err.status === 530)
-        error +=
-          " — Cloudflare cannot reach the Nitro; cloudflared or the laptop is down.";
-    }
-    console.log(`\n${red("  ERROR")}\n${wrap(error, "    ", width)}`);
-    return {
-      name: fixture.name,
-      status: "fail",
-      count: 0,
-      verbatim: 0,
-      warnings,
-      error,
-      ms,
-      verdict: "-",
-    };
-  }
-  const ms = Math.round(performance.now() - started);
-
   console.log(
     `\n${bold("  PROPOSITIONS")}  ${dim(`${propositions.length} in ${ms} ms`)}`,
   );
@@ -334,6 +209,67 @@ async function runOne(
   };
 }
 
+/**
+ * One conversation; the model gets resolve_date and submit_propositions as
+ * tools and decides when to resolve a date. See src/extraction-agent.ts.
+ */
+async function runOne(
+  cfg: EvalConfig,
+  fixture: Fixture,
+  index: number,
+  total: number,
+): Promise<Outcome> {
+  const width = cfg.wrapWidth ?? 100;
+  const warnings: string[] = [];
+  console.log(
+    `\n${bold(`═══ ${index + 1}/${total}  ${fixture.name} `.padEnd(width, "═"))}\n`,
+  );
+  console.log(bold("  TRANSCRIPT"));
+  console.log(wrap(fixture.transcript, "    ", width));
+  console.log(
+    `\n${bold("  REQUEST")}  ${dim("single conversation: resolve_date + submit_propositions tools")}`,
+  );
+
+  const started = performance.now();
+  try {
+    const { value, completion, hops, dateCalls } = await extractPropositions<{
+      propositions: Proposition[];
+    }>(cfg.client, cfg.systemPrompt, fixture.transcript, cfg.schema, {
+      mode: cfg.mode,
+      stream: cfg.stream,
+      onChunk: (chunk) => {
+        if (!cfg.stream) return;
+        const delta = chunk.choices[0]?.delta;
+        if (delta?.reasoning_content) process.stdout.write(dim("."));
+        if (delta?.content) process.stdout.write(dim("+"));
+      },
+      onToolCall: (call, result) => {
+        if (cfg.stream) console.log();
+        console.log(
+          `\n${bold("  TOOL CALL")} ${call.function.name}(${call.function.arguments})`,
+        );
+        console.log(json(result));
+      },
+    });
+    const propositions = value.propositions;
+    printRaw(completion, value);
+    const m = completion.meetiq;
+    const meta =
+      `mode=${m.mode_used} (${m.router.rule})  finish=${completion.choices[0]?.finish_reason}  hops=${hops}  date_calls=${dateCalls}  ` +
+      `tokens in=${completion.usage.prompt_tokens} out=${completion.usage.completion_tokens}  retries=${m.retries}` +
+      (m.mode_used === "thinking"
+        ? `  reasoning_tokens=${completion.usage.completion_tokens_details.reasoning_tokens}`
+        : "");
+    if (completion.choices[0]?.finish_reason === "length")
+      warnings.push("output hit maxTokens; propositions may be cut off");
+    const ms = Math.round(performance.now() - started);
+    return finishOutcome(cfg, fixture, propositions, warnings, meta, ms);
+  } catch (err) {
+    const ms = Math.round(performance.now() - started);
+    return failOutcome(fixture, warnings, describeError(err), ms, width);
+  }
+}
+
 // Whole run: header, health, manual loop, summary, exit code
 
 export async function runEvaluation(cfg: EvalConfig): Promise<never> {
@@ -347,7 +283,7 @@ export async function runEvaluation(cfg: EvalConfig): Promise<never> {
 
   console.log(
     bold(
-      `transcript → propositions  ·  ${cfg.label}  ·  mode=${cfg.mode}  ·  dates=${cfg.dateResolution ?? "off"}  ·  ${cfg.fixtures.length} transcript(s)`,
+      `transcript → propositions  ·  ${cfg.label}  ·  mode=${cfg.mode}  ·  ${cfg.fixtures.length} transcript(s)`,
     ),
   );
   try {
@@ -371,7 +307,7 @@ export async function runEvaluation(cfg: EvalConfig): Promise<never> {
   );
   console.log(dim(wrap(cfg.systemPrompt, "    ", width)));
   console.log(
-    `\n${bold("  RESPONSE SCHEMA")}  ${dim("response_format.json_schema.schema")}`,
+    `\n${bold("  RESPONSE SCHEMA")}  ${dim("submit_propositions tool parameters")}`,
   );
   console.log(dim(json(cfg.schema)));
   if (rl)

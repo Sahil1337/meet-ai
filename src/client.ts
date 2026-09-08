@@ -7,9 +7,12 @@
  *   const qwen = new QwenProxyClient({ baseUrl: 'http://proxy-host:8000', apiKey: '...' });
  *
  * It speaks the OpenAI chat-completions shape plus the proxy's extensions
- * (`mode`, `debug`, `meetiq`, `reasoning_content`) and adds two helpers that
- * cover the common workloads: `extract()` for schema-validated JSON and
- * `runTools()` for a tool-calling loop.
+ * (`mode`, `debug`, `meetiq`, `reasoning_content`) and adds four helpers that
+ * cover the common workloads: `extract()`/`extractStream()` for schema-validated
+ * JSON, `runTools()` for a tool-calling loop that ends in plain text, and
+ * `runToolsUntil()` for a loop that ends by calling a designated "final" tool
+ * (for when the answer itself must be schema-shaped but the model also needs
+ * other tools along the way — response_format can't be combined with tools).
  */
 
 import type {

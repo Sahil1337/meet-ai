@@ -32,16 +32,8 @@ export type EvalConfig = {
   types: string[];
   mode: Mode;
   maxTokens?: number;
-  /** Use the streaming endpoint (extractStream) instead of a single buffered response. */
+  /** Use the streaming endpoint instead of a single buffered response. */
   stream?: boolean;
-  /**
-   * How relative dates ("Friday") become absolute before extraction.
-   * "tool":  a pre-pass in which the model calls resolve_date per expression; anything it misses is filled in by the local scan.
-   * "local": the same arithmetic run directly over the transcript, no extra model call.
-   * "off":   nothing is pre-resolved; the model works dates out itself from rule 6.
-   * A schema-constrained response cannot also emit tool calls, so the tool cannot run inside the extraction call itself.
-   */
-  dateResolution?: "tool" | "local" | "off";
   /** Pause after each transcript for a verdict. Only applies in a terminal. */
   manual: boolean;
   /** Ask the proxy for meetiq.upstream_requests and print them. */

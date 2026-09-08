@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { QwenProxyClient } from "../src/client.ts";
-import { CONCISE_PROMPT, CONCISE_SCHEMA, ORIGINAL_PROMPT, ORIGINAL_SCHEMA, TYPES, withDateNote } from "./prompts.ts";
+import { AGENT_PROMPT, PROPOSITIONS_SCHEMA, TYPES } from "./prompts.ts";
 import { runEvaluation } from "./test-helpers.ts";
 import type { Fixture } from "./types.ts";
 
@@ -10,15 +10,7 @@ const MANUAL = true;
 const TRANSCRIPT_FILE: string | undefined = undefined;
 const MODE = "thinking" as const;
 const DEBUG = false;
-const USE_PROMPT: "original" | "concise" = "original";
-const DATE_RESOLUTION: "tool" | "local" | "off" = "tool";
 const STREAM = false;
-
-const SYSTEM_PROMPT = withDateNote(
-  USE_PROMPT === "original" ? ORIGINAL_PROMPT : CONCISE_PROMPT,
-  DATE_RESOLUTION,
-);
-const SCHEMA = USE_PROMPT === "original" ? ORIGINAL_SCHEMA : CONCISE_SCHEMA;
 
 const FIXTURES: Fixture[] = [
   {
@@ -45,7 +37,7 @@ await runEvaluation({
     apiKey: API_KEY,
     timeoutMs: 180_000,
   }),
-  label: `${BASE_URL}  ·  prompt=${USE_PROMPT}`,
+  label: BASE_URL,
   fixtures: TRANSCRIPT_FILE
     ? [
         {
@@ -54,11 +46,10 @@ await runEvaluation({
         },
       ]
     : FIXTURES,
-  systemPrompt: SYSTEM_PROMPT,
-  schema: SCHEMA,
+  systemPrompt: AGENT_PROMPT,
+  schema: PROPOSITIONS_SCHEMA,
   types: TYPES,
   mode: MODE,
-  dateResolution: DATE_RESOLUTION,
   stream: STREAM,
   manual: MANUAL,
   debug: DEBUG,
