@@ -109,11 +109,16 @@ personal experiments.
   emits) and Hermes JSON. Do not add a third without checking real model
   output for it.
 - `tools` + `response_format` compile into one `oneOf` grammar, so a turn can
-  call a tool or answer in the caller's schema. Ollama often still parses the
-  call branch structurally (`tool_parse: "native"`); `parseUnionOutput` covers
-  the case where it does not, discriminating on a declared tool name plus an
-  object `arguments`. Grammar-constrained decoding does not block thinking —
-  only forced `tool_choice` pins the mode to fast, and that is policy.
+  call a tool or answer in the caller's schema. Without it the response schema
+  is the only grammar and the model, unable to call anything, fabricates an
+  answer that fits the schema. Where the call lands depends on `think`:
+  `think:true` has Ollama extract it into `tool_calls` (`tool_parse: "native"`),
+  `think:false` leaves it in `content` as grammar JSON (`tool_parse: "union"`,
+  handled by `parseUnionOutput`, which reads it as a call only when `name` is a
+  declared tool and `arguments` is an object). Both paths are live — tools route
+  to thinking by default, so `native` is the common one. Grammar-constrained
+  decoding does not block thinking; only forced `tool_choice` pins the mode to
+  fast, and that is policy, not a limitation.
 - Never hand-render assistant `tool_calls` into prompt text. Pass them
   through structurally so the model's chat template renders the dialect it
   was trained on; the two drifted apart once already.
