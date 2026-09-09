@@ -17,6 +17,7 @@ export const dim = style("2");
 export const green = style("32");
 export const red = style("31");
 export const yellow = style("33");
+export const cyan = style("36");
 
 export function wrap(text: string, indent = "    ", width = 100): string {
   const out: string[] = [];
@@ -41,22 +42,53 @@ export function json(value: unknown, indent = "    "): string {
     .join("\n");
 }
 
-// Spinner shown while waiting on the proxy; replaces live streaming/tool-call
-// dumps, which just duplicated what printRaw() shows once the call finishes.
+/**
+ * The one place that formats a "  TITLE  subtitle" section header, always
+ * preceded by a blank line so sections never glue onto whatever came before.
+ */
+function heading(
+  title: string,
+  subtitle?: string,
+  color: (s: string) => string = bold,
+): string {
+  return `\n${color(`  ${title}`)}${subtitle ? `  ${dim(subtitle)}` : ""}`;
+}
+
+// Spinner shown while waiting on the proxy. log() surfaces agentic-loop
+// events (tool calls between hops) as a single block without breaking the
+// spin; stop() is called once the final answer is in and printRaw() takes
+// over. Every reappearance (first draw, and after each log()) leads with a
+// blank line so it never glues onto the previous block.
 
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
-function startSpinner(label: string): () => void {
-  if (!tty) return () => {};
+interface Spinner {
+  log: (line: string) => void;
+  stop: () => void;
+}
+
+function startSpinner(label: string): Spinner {
+  if (!tty) return { log: (line) => console.log(line), stop: () => {} };
   let i = 0;
-  process.stdout.write(`${dim(SPINNER_FRAMES[0]!)} ${dim(label)}`);
+  const draw = (lead: "\n" | "\r") =>
+    process.stdout.write(`${lead}${dim(SPINNER_FRAMES[i]!)} ${dim(label)}`);
+  const clear = () =>
+    process.stdout.write(`\r${" ".repeat(label.length + 2)}\r`);
+  draw("\n");
   const timer = setInterval(() => {
     i = (i + 1) % SPINNER_FRAMES.length;
-    process.stdout.write(`\r${dim(SPINNER_FRAMES[i]!)} ${dim(label)}`);
+    draw("\r");
   }, 80);
-  return () => {
-    clearInterval(timer);
-    process.stdout.write(`\r${" ".repeat(label.length + 2)}\r`);
+  return {
+    log: (line) => {
+      clear();
+      console.log(line);
+      draw("\n");
+    },
+    stop: () => {
+      clearInterval(timer);
+      clear();
+    },
   };
 }
 
@@ -91,36 +123,46 @@ function printRaw(completion: ChatCompletion, parsed: unknown): void {
   const { meetiq, ...rest } = completion;
   const { upstream_requests, ...meetiqRest } = meetiq;
   console.log(
-    `\n${bold("  RAW RESPONSE")}  ${dim("the ChatCompletion object as received; message.content is a JSON string")}`,
+    heading(
+      "RAW RESPONSE",
+      "the ChatCompletion object as received; message.content is a JSON string",
+    ),
   );
   console.log(json({ ...rest, meetiq: meetiqRest }));
   if (upstream_requests) {
     console.log(
-      `\n${bold("  UPSTREAM REQUEST(S)")}  ${dim("exact payload(s) the proxy sent to Ollama /api/chat")}`,
+      heading(
+        "UPSTREAM REQUEST(S)",
+        "exact payload(s) the proxy sent to Ollama /api/chat",
+      ),
     );
     console.log(json(upstream_requests));
   }
   const reasoning = completion.choices[0]?.message.reasoning_content;
   if (reasoning) {
     console.log(
-      `\n${bold("  THINKING")}  ${dim(`message.reasoning_content, ${reasoning.length} chars, ${completion.usage.completion_tokens_details.reasoning_tokens} tokens`)}`,
+      heading(
+        "THINKING",
+        `message.reasoning_content, ${reasoning.length} chars, ${completion.usage.completion_tokens_details.reasoning_tokens} tokens`,
+      ),
     );
     console.log(dim(wrap(reasoning, "    ")));
   }
-  console.log(
-    `\n${bold("  CONTENT PARSED")}  ${dim("JSON.parse(message.content)")}`,
-  );
+  console.log(heading("CONTENT PARSED", "JSON.parse(message.content)"));
   console.log(json(parsed));
 }
 
 function describeError(err: unknown): string {
-  let error = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+  let error =
+    err instanceof Error ? `${err.name}: ${err.message}` : String(err);
   if (err instanceof QwenProxyError) {
     error = `${err.code} (HTTP ${err.status}): ${err.message}`;
     if (err.status === 524)
-      error += " — Cloudflare edge gave up after 100 s; the proxy did not answer in time.";
+      error +=
+        " — Cloudflare edge gave up after 100 s; the proxy did not answer in time.";
     if (err.status === 530)
-      error += " — Cloudflare cannot reach the Nitro; cloudflared or the laptop is down.";
+      error +=
+        " — Cloudflare cannot reach the Nitro; cloudflared or the laptop is down.";
   }
   return error;
 }
@@ -155,9 +197,7 @@ function finishOutcome(
   ms: number,
 ): Outcome {
   const width = cfg.wrapWidth ?? 100;
-  console.log(
-    `\n${bold("  PROPOSITIONS")}  ${dim(`${propositions.length} in ${ms} ms`)}`,
-  );
+  console.log(heading("PROPOSITIONS", `${propositions.length} in ${ms} ms`));
   const speakers = speakersOf(fixture.transcript);
   const withEvidence = propositions.filter(
     (p) => typeof p.evidence === "string",
@@ -205,7 +245,7 @@ function finishOutcome(
   if (propositions.length === 0) warnings.push("no propositions returned");
 
   console.log(`\n  ${dim("META")}  ${dim(meta)}`);
-  console.log(`\n${bold("  CHECKS")}`);
+  console.log(heading("CHECKS"));
   console.log(
     `    ${propositions.length > 0 ? green("✓") : red("✗")} propositions returned: ${propositions.length}`,
   );
@@ -244,13 +284,19 @@ async function runOne(
     `\n${bold(`═══ ${index + 1}/${total}  ${fixture.name} `.padEnd(width, "═"))}\n`,
   );
   console.log(bold("  TRANSCRIPT"));
-  console.log(wrap(fixture.transcript, "    ", width));
+  console.log(wrap(fixture.transcript, "    ", width), "\n");
   console.log(
-    `\n${bold("  REQUEST")}  ${dim("single conversation: resolve_date + submit_propositions tools")}`,
+    heading(
+      "REQUEST",
+      "single conversation: resolve_date + submit_propositions tools",
+    ),
   );
 
   const started = performance.now();
-  const stopSpinner = startSpinner("waiting for response…");
+  let spinner: Spinner | null = startSpinner("waiting for response…");
+  let hopStreaming = false;
+  let thinkingStarted = false;
+  let contentStarted = false;
   try {
     const { value, completion, hops, dateCalls } = await extractPropositions<{
       propositions: Proposition[];
@@ -258,8 +304,47 @@ async function runOne(
       mode: cfg.mode,
       stream: cfg.stream,
       toolChoice: cfg.toolChoice,
+      onChunk: (chunk) => {
+        if (!cfg.stream) return;
+        const delta = chunk.choices[0]?.delta;
+        if (!delta?.reasoning_content && !delta?.content) return;
+        if (!hopStreaming) {
+          spinner?.stop();
+          spinner = null;
+          hopStreaming = true;
+        }
+        if (delta.reasoning_content) {
+          if (!thinkingStarted) {
+            console.log(heading("THINKING (live)"));
+            thinkingStarted = true;
+          }
+          process.stdout.write(dim(delta.reasoning_content));
+        }
+        if (delta.content) {
+          if (!contentStarted) {
+            console.log(heading("CONTENT (live)"));
+            contentStarted = true;
+          }
+          process.stdout.write(delta.content);
+        }
+      },
+      onToolCall: (call, result) => {
+        if (hopStreaming) {
+          console.log();
+          hopStreaming = false;
+          thinkingStarted = false;
+          contentStarted = false;
+        }
+        const block = `${heading("TOOL CALL", `${call.function.name}(${call.function.arguments})`, cyan)}\n${json(result)}`;
+        if (spinner) spinner.log(block);
+        else {
+          console.log(block);
+          spinner = startSpinner("waiting for response…");
+        }
+      },
     });
-    stopSpinner();
+    if (hopStreaming) console.log();
+    spinner?.stop();
     const propositions = value.propositions;
     printRaw(completion, value);
     const m = completion.meetiq;
@@ -274,7 +359,8 @@ async function runOne(
     const ms = Math.round(performance.now() - started);
     return finishOutcome(cfg, fixture, propositions, warnings, meta, ms);
   } catch (err) {
-    stopSpinner();
+    if (hopStreaming) console.log();
+    spinner?.stop();
     const ms = Math.round(performance.now() - started);
     return failOutcome(fixture, warnings, describeError(err), ms, width);
   }
@@ -313,11 +399,11 @@ export async function runEvaluation(cfg: EvalConfig): Promise<never> {
     );
   }
   console.log(
-    `\n${bold("  SYSTEM PROMPT")}  ${dim("sent as the first message of every request")}`,
+    heading("SYSTEM PROMPT", "sent as the first message of every request"),
   );
   console.log(dim(wrap(cfg.systemPrompt, "    ", width)));
   console.log(
-    `\n${bold("  RESPONSE SCHEMA")}  ${dim("submit_propositions tool parameters")}`,
+    heading("RESPONSE SCHEMA", "submit_propositions tool parameters"),
   );
   console.log(dim(json(cfg.schema)));
   if (rl)
