@@ -24,6 +24,7 @@ import {
   parseForcedOutput,
   parseToolCalls,
   slimTools,
+  UnionContentGate,
   ToolCallGate,
   toOpenAIToolCalls,
   validateToolCalls,
@@ -55,10 +56,12 @@ export interface CompletionPlan {
   forcedChoice: ToolChoice | undefined;
   modeUsed: Mode;
   /**
-   * Streaming must buffer when the whole body has to be seen first: a forced
-   * call is decoded into `content`, and structured output can be replaced
-   * outright by a validation retry. Tool calls stream fine — the backend
-   * hands them over complete, so they are validated and emitted as one delta.
+   * A forced call is decoded into `content` and would leak raw JSON as prose,
+   * so it always buffers. Structured output buffers only when NOT streaming:
+   * a streaming caller has accepted partial-then-complete semantics, so the
+   * grammar is relied on and the validation retry is skipped, which is what
+   * OpenAI does. Tool calls never need buffering — the backend hands them over
+   * complete, so they are validated and emitted as one delta.
    */
   buffered: boolean;
   /** Tools and `response_format` were both sent, so the grammar is a union of both. */
@@ -95,7 +98,7 @@ function planCompletion(req: ChatRequest, config: Config, decision: RouteDecisio
     forcedChoice,
     modeUsed,
     union: unionTools !== undefined,
-    buffered: forcedChoice !== undefined || structuredFormat !== undefined,
+    buffered: forcedChoice !== undefined || (structuredFormat !== undefined && !req.stream),
     turn: {
       messages,
       mode: modeUsed,
@@ -171,7 +174,12 @@ export async function runChatCompletion(
 
   const turnFor = async (msgs: OllamaMessage[]): Promise<TurnResult> => {
     // A fresh gate per turn: a retry restarts the content stream.
-    const gate = streamDelta && activeTools ? new ToolCallGate() : undefined;
+    const gate =
+      !streamDelta || !activeTools
+        ? undefined
+        : unionTools
+          ? new UnionContentGate(unionTools.map((t) => t.function.name))
+          : new ToolCallGate();
     const onTurnDelta: ((d: Delta) => void) | undefined = !streamDelta
       ? streamReasoning
       : gate
@@ -232,7 +240,10 @@ export async function runChatCompletion(
 
   if (req.response_format && req.response_format.type !== 'text' && toolCalls.length === 0) {
     let check = validateStructuredOutput(turn.content, req.response_format, ajv);
-    if (!check.ok) {
+    // Streaming already put the content on the wire, and an SSE chunk cannot be
+    // unsent, so a retry would contradict what the client read. OpenAI relies on
+    // the grammar alone here too and never re-generates.
+    if (!check.ok && !streamDelta) {
       stats.retries++;
       turn = await turnFor([
         ...messages,

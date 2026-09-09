@@ -99,6 +99,48 @@ export class ToolCallGate {
   }
 }
 
+const CALL_PREFIX = '{"name":"';
+
+/**
+ * A union turn's content is either a tool call or the caller's response shape,
+ * and only the first key tells them apart. Content is withheld until that is
+ * decidable, then either suppressed for good (it was a call, which is emitted
+ * separately once validated) or released and streamed freely from then on.
+ */
+export class UnionContentGate {
+  private buffer = '';
+  private verdict: 'call' | 'response' | undefined;
+
+  constructor(private readonly toolNames: string[]) {}
+
+  push(chunk: string): string {
+    if (this.verdict === 'call') return '';
+    if (this.verdict === 'response') return chunk;
+    this.buffer += chunk;
+    this.verdict = this.decide();
+    if (this.verdict === undefined) return '';
+    const held = this.buffer;
+    this.buffer = '';
+    return this.verdict === 'call' ? '' : held;
+  }
+
+  /** Anything still held once the turn ends and no call was found. */
+  flush(): string {
+    const rest = this.verdict === 'call' ? '' : this.buffer;
+    this.buffer = '';
+    return rest;
+  }
+
+  private decide(): 'call' | 'response' | undefined {
+    const compact = this.buffer.replace(/\s/g, '');
+    if (compact.length === 0) return undefined;
+    const named = /^\{"name":"([^"]*)"/.exec(compact);
+    if (named) return this.toolNames.includes(named[1] ?? '') ? 'call' : 'response';
+    if (compact.length < CALL_PREFIX.length) return CALL_PREFIX.startsWith(compact) ? undefined : 'response';
+    return compact.startsWith(CALL_PREFIX) ? undefined : 'response';
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Parsing
 // ---------------------------------------------------------------------------
