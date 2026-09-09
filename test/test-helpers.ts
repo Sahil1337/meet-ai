@@ -41,6 +41,25 @@ export function json(value: unknown, indent = "    "): string {
     .join("\n");
 }
 
+// Spinner shown while waiting on the proxy; replaces live streaming/tool-call
+// dumps, which just duplicated what printRaw() shows once the call finishes.
+
+const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+function startSpinner(label: string): () => void {
+  if (!tty) return () => {};
+  let i = 0;
+  process.stdout.write(`${dim(SPINNER_FRAMES[0]!)} ${dim(label)}`);
+  const timer = setInterval(() => {
+    i = (i + 1) % SPINNER_FRAMES.length;
+    process.stdout.write(`\r${dim(SPINNER_FRAMES[i]!)} ${dim(label)}`);
+  }, 80);
+  return () => {
+    clearInterval(timer);
+    process.stdout.write(`\r${" ".repeat(label.length + 2)}\r`);
+  };
+}
+
 // Checks
 
 const normalize = (s: string) =>
@@ -231,6 +250,7 @@ async function runOne(
   );
 
   const started = performance.now();
+  const stopSpinner = startSpinner("waiting for response…");
   try {
     const { value, completion, hops, dateCalls } = await extractPropositions<{
       propositions: Proposition[];
@@ -238,20 +258,8 @@ async function runOne(
       mode: cfg.mode,
       stream: cfg.stream,
       toolChoice: cfg.toolChoice,
-      onChunk: (chunk) => {
-        if (!cfg.stream) return;
-        const delta = chunk.choices[0]?.delta;
-        if (delta?.reasoning_content) process.stdout.write(dim("."));
-        if (delta?.content) process.stdout.write(dim("+"));
-      },
-      onToolCall: (call, result) => {
-        if (cfg.stream) console.log();
-        console.log(
-          `\n${bold("  TOOL CALL")} ${call.function.name}(${call.function.arguments})`,
-        );
-        console.log(json(result));
-      },
     });
+    stopSpinner();
     const propositions = value.propositions;
     printRaw(completion, value);
     const m = completion.meetiq;
@@ -266,6 +274,7 @@ async function runOne(
     const ms = Math.round(performance.now() - started);
     return finishOutcome(cfg, fixture, propositions, warnings, meta, ms);
   } catch (err) {
+    stopSpinner();
     const ms = Math.round(performance.now() - started);
     return failOutcome(fixture, warnings, describeError(err), ms, width);
   }
