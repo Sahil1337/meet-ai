@@ -203,7 +203,7 @@ function finishOutcome(
     (p) => typeof p.evidence === "string",
   ).length;
   let verbatim = 0;
-  const ids = new Set<string>();
+  const seenText = new Map<string, number>();
   propositions.forEach((p, i) => {
     const n = i + 1;
     const hasEvidence = typeof p.evidence === "string";
@@ -219,7 +219,7 @@ function finishOutcome(
         ? p.confidence.toFixed(2)
         : String(p.confidence);
     console.log(
-      `\n    ${bold(`${n}.`)} ${dim(p.id)} [${typeTag}] ${p.speaker ? bold(p.speaker) : dim("no speaker")}  ${dim(`conf ${conf}`)}`,
+      `\n    ${bold(`${n}.`)} [${typeTag}] ${p.speaker ? bold(p.speaker) : dim("no speaker")}  ${dim(`conf ${conf}`)}`,
     );
     console.log(wrap(p.text, "       ", width));
     if (hasEvidence)
@@ -236,8 +236,10 @@ function finishOutcome(
       p.confidence > 1
     )
       warnings.push(`#${n}: confidence ${p.confidence} is outside 0..1`);
-    if (ids.has(p.id)) warnings.push(`#${n}: duplicate id ${p.id}`);
-    ids.add(p.id);
+    const normText = normalize(p.text);
+    const dupOf = seenText.get(normText);
+    if (dupOf) warnings.push(`#${n}: duplicates #${dupOf}`);
+    else seenText.set(normText, n);
     if (hasEvidence && !ok)
       warnings.push(`#${n}: evidence is not a verbatim span`);
   });

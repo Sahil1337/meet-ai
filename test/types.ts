@@ -7,7 +7,6 @@ import type { QwenProxyClient } from "../src/client.ts";
 import type { Mode, ToolChoice } from "../src/shared/types.ts";
 
 export type Proposition = {
-  id: string;
   text: string;
   type: string;
   speaker: string | null;
