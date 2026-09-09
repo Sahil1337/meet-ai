@@ -141,6 +141,10 @@ export async function runChatCompletion(
   const unionTools = union ? activeTools : undefined;
   const messages = turnInput.messages;
   const streamDelta = buffered ? undefined : onDelta;
+  // Reasoning is never validated and never replaced, so it streams even when
+  // the body must be buffered — only content and tool calls have to wait.
+  const streamReasoning: ((d: Delta) => void) | undefined =
+    buffered && onDelta ? (d) => (d.reasoning ? onDelta({ reasoning: d.reasoning }) : undefined) : undefined;
 
   const stats = {
     retries: 0,
@@ -169,7 +173,7 @@ export async function runChatCompletion(
     // A fresh gate per turn: a retry restarts the content stream.
     const gate = streamDelta && activeTools ? new ToolCallGate() : undefined;
     const onTurnDelta: ((d: Delta) => void) | undefined = !streamDelta
-      ? undefined
+      ? streamReasoning
       : gate
         ? (d) => {
             const content = d.content ? gate.push(d.content) : '';
@@ -253,11 +257,10 @@ export async function runChatCompletion(
   const finishReason: FinishReason = toolCalls.length ? 'tool_calls' : turn.doneReason === 'length' ? 'length' : 'stop';
   if (onDelta) {
     if (buffered) {
-      onDelta({
-        ...(reasoning ? { reasoning } : {}),
-        ...(content ? { content } : {}),
-        ...(toolCalls.length ? { toolCalls } : {}),
-      });
+      // Reasoning already streamed above; only the validated body is left.
+      if (content || toolCalls.length) {
+        onDelta({ ...(content ? { content } : {}), ...(toolCalls.length ? { toolCalls } : {}) });
+      }
     } else if (toolCalls.length) {
       // Reasoning and content already streamed; the calls waited on validation.
       onDelta({ toolCalls });
