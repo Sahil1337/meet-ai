@@ -210,7 +210,13 @@ for await (const chunk of stream) {
 }
 ```
 
-**Limitation:** when `tools` or `response_format` are present the proxy must see the whole output before it can validate it, so the response is buffered and delivered as one content/tool_calls chunk followed by the finish chunk. It is still a valid SSE stream, just not token by token. Plain chat streams token by token.
+Requests carrying `tools` stream token by token. Ollama returns each tool call complete rather than as argument fragments, so a call is validated the moment it arrives and emitted as a single `tool_calls` delta after the reasoning and content that preceded it.
+
+`response_format` streams too. The schema is already a decoding grammar, so tokens are constrained as they are produced and the JSON is built up in `delta.content` exactly as OpenAI does it — which also means the ajv retry is skipped on streaming requests, since a retry would replace content the client has already read. Non-streaming requests keep validate-and-retry.
+
+Reasoning always streams, even on the paths that buffer: it is never validated and never replaced.
+
+**Limitation:** a forced `tool_choice` is still buffered and delivered as one delta followed by the finish chunk — constrained decoding writes the call into `content`, so streaming it would emit raw JSON as prose.
 
 ### Concurrency and limits
 
