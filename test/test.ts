@@ -13,6 +13,10 @@ const MODE = "thinking";
 const DEBUG = false;
 const STREAM = true;
 const TOOL_CHOICE: "required" | "auto" = "auto";
+// Quiet mode: only the transcript and the extracted propositions print per
+// fixture — no system prompt/schema dump, no live streaming, no tool-call
+// trace, no raw response, no META/CHECKS. See EvalConfig.suppress.
+const SUPPRESS = false;
 
 // The MeetIQ kickoff meeting (Monday 2026-09-07): settling what we embed, how
 // we embed it, which database, which stack, and who owns what. One continuous
@@ -184,4 +188,5 @@ await runEvaluation({
   toolChoice: TOOL_CHOICE,
   manual: MANUAL,
   debug: DEBUG,
+  suppress: SUPPRESS,
 });

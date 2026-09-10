@@ -310,16 +310,18 @@ function finishOutcome(
 
   if (propositions.length === 0) warnings.push("no propositions returned");
 
-  console.log(`\n  ${dim("META")}  ${dim(meta)}`);
-  console.log(heading("CHECKS"));
-  console.log(
-    `    ${propositions.length > 0 ? green("✓") : red("✗")} propositions returned: ${propositions.length}`,
-  );
-  if (withEvidence > 0)
+  if (!cfg.suppress) {
+    console.log(`\n  ${dim("META")}  ${dim(meta)}`);
+    console.log(heading("CHECKS"));
     console.log(
-      `    ${verbatim === withEvidence ? green("✓") : yellow("!")} evidence verbatim: ${verbatim}/${withEvidence}`,
+      `    ${propositions.length > 0 ? green("✓") : red("✗")} propositions returned: ${propositions.length}`,
     );
-  for (const w of warnings) console.log(`    ${yellow("!")} ${w}`);
+    if (withEvidence > 0)
+      console.log(
+        `    ${verbatim === withEvidence ? green("✓") : yellow("!")} evidence verbatim: ${verbatim}/${withEvidence}`,
+      );
+    for (const w of warnings) console.log(`    ${yellow("!")} ${w}`);
+  }
 
   const status: Outcome["status"] =
     propositions.length === 0 ? "fail" : warnings.length ? "warn" : "pass";
@@ -351,15 +353,16 @@ async function runOne(
   );
   console.log(bold("  TRANSCRIPT"));
   console.log(wrap(fixture.transcript, "    ", width), "\n");
-  console.log(
-    heading(
-      "REQUEST",
-      "single conversation: resolve_date + investigate_ambiguity + submit_propositions tools",
-    ),
-  );
+  if (!cfg.suppress)
+    console.log(
+      heading(
+        "REQUEST",
+        "single conversation: resolve_date + investigate_ambiguity + submit_propositions tools",
+      ),
+    );
 
   const started = performance.now();
-  let spinner: Spinner | null = startSpinner("waiting for response…");
+  let spinner: Spinner | null = cfg.suppress ? null : startSpinner("waiting for response…");
   let hopStreaming = false;
   let thinkingStarted = false;
   let contentStarted = false;
@@ -372,7 +375,7 @@ async function runOne(
       toolChoice: cfg.toolChoice,
       precedingTranscript: fixture.precedingTranscript,
       onChunk: (chunk) => {
-        if (!cfg.stream) return;
+        if (!cfg.stream || cfg.suppress) return;
         const delta = chunk.choices[0]?.delta;
         if (!delta?.reasoning_content && !delta?.content) return;
         if (!hopStreaming) {
@@ -396,6 +399,7 @@ async function runOne(
         }
       },
       onToolCall: (call, result) => {
+        if (cfg.suppress) return;
         if (hopStreaming) {
           console.log();
           hopStreaming = false;
@@ -413,7 +417,7 @@ async function runOne(
     if (hopStreaming) console.log();
     spinner?.stop();
     const propositions = value.propositions;
-    printRaw(completion, value);
+    if (!cfg.suppress) printRaw(completion, value);
     const m = completion.meetiq;
     const meta =
       `mode=${m.mode_used} (${m.router.rule})  tool_parse=${m.tool_parse}  finish=${completion.choices[0]?.finish_reason}  hops=${hops}  date_calls=${dateCalls}  ambiguity_calls=${ambiguityCalls}  ` +
@@ -465,14 +469,16 @@ export async function runEvaluation(cfg: EvalConfig): Promise<never> {
       ),
     );
   }
-  console.log(
-    heading("SYSTEM PROMPT", "sent as the first message of every request"),
-  );
-  console.log(dim(wrap(cfg.systemPrompt, "    ", width)));
-  console.log(
-    heading("RESPONSE SCHEMA", "submit_propositions tool parameters"),
-  );
-  console.log(dim(json(cfg.schema)));
+  if (!cfg.suppress) {
+    console.log(
+      heading("SYSTEM PROMPT", "sent as the first message of every request"),
+    );
+    console.log(dim(wrap(cfg.systemPrompt, "    ", width)));
+    console.log(
+      heading("RESPONSE SCHEMA", "submit_propositions tool parameters"),
+    );
+    console.log(dim(json(cfg.schema)));
+  }
   if (rl)
     console.log(
       `\n${dim("after each transcript: [Enter] next   [r] rerun   [p] pass / [f] fail   [q] quit")}`,

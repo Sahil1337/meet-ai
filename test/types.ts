@@ -53,6 +53,14 @@ export type EvalConfig = {
   manual: boolean;
   /** Ask the proxy for meetiq.upstream_requests and print them. */
   debug?: boolean;
+  /**
+   * Quiet mode: print only the transcript and the extracted propositions per
+   * fixture — no system prompt/schema dump, no live streaming, no tool-call
+   * trace, no raw response, no META/CHECKS. Everything is still computed
+   * (warnings, pass/warn/fail) for the summary table at the end; only the
+   * per-fixture printing is cut down. Errors still print regardless.
+   */
+  suppress?: boolean;
   wrapWidth?: number;
 };
 
