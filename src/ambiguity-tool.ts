@@ -153,9 +153,10 @@ function findAnchor(lines: ParsedLine[], anchorLine: string): { line: ParsedLine
   return { line: lines[matches[0]!]!, index: matches[0]! };
 }
 
-// Function words stripped before keyword extraction — the pronouns rule 1
-// already lists, plus the usual articles/prepositions/auxiliaries. A bare
-// pronoun reference ("it", "he") yields zero keywords by design: there's
+// Function words stripped before keyword extraction — the pronouns the
+// system prompt's REFERENCES section already lists, plus the usual
+// articles/prepositions/auxiliaries. A bare pronoun reference ("it", "he")
+// yields zero keywords by design: there's
 // nothing there to search on, so the gather pass falls through to the time
 // window.
 const STOPWORDS = new Set([
@@ -367,7 +368,7 @@ export const INVESTIGATE_AMBIGUITY_TOOL: Tool = {
       "Give it the exact transcript line the reference occurs in (`anchor_line`, copied verbatim including the speaker and '[HH:MM YYYY-MM-DD]' prefix) and the reference itself (`reference`). " +
       "It searches the transcript spoken before that line on its own and resolves the reference itself — you get back `resolved: true` with the answer in `referent`, or `resolved: false` if nothing earlier makes it clear. " +
       "One call per reference is enough; it already looked as far back as it usefully can, so calling it again for the same reference will not find anything new. " +
-      "If it comes back `resolved: false`, follow rule 1: preserve the ambiguity in the proposition rather than invent a referent. " +
+      "If it comes back `resolved: false`, preserve the ambiguity in the record rather than invent a referent. " +
       "Do not call this for references that are already clear from the current window.",
     parameters: {
       type: "object",

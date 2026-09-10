@@ -43,7 +43,7 @@ export async function extractPropositions<T = { propositions: unknown[] }>(
      * chunked away. Not sent to the model up front; investigate_ambiguity
      * searches it on demand so a reference whose antecedent fell in an
      * earlier window can still be resolved instead of just preserved as
-     * ambiguous (rule 1). Omit for the first window, or when the caller has
+     * ambiguous (see the REFERENCES section). Omit for the first window, or when the caller has
      * no earlier transcript to offer.
      */
     precedingTranscript?: string;

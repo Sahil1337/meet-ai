@@ -127,9 +127,12 @@ export function speakersOf(transcript: string): string[] {
  * gets to submit_propositions. Each window is extracted independently, same
  * as it would be in production; stitching windows back together over time
  * is the project-memory layer's job, not the extraction agent's (see
- * files/temp.md, "Source → Claim → Entity → State → Change") — rule 1
- * ("preserve ambiguity rather than inventing an identity") already covers a
- * pronoun whose antecedent fell in an earlier window.
+ * files/temp.md, "Source → Claim → Entity → State → Change"). A pronoun
+ * whose antecedent fell in an earlier window isn't just left ambiguous
+ * though — investigate_ambiguity (src/ambiguity-tool.ts) can search
+ * fixturesFromMeeting()'s precedingTranscript to resolve it; the system
+ * prompt's REFERENCES section only falls back to preserving the ambiguity
+ * when that comes back unresolved.
  */
 export function chunkBySpeakingTime(
   transcript: string,
