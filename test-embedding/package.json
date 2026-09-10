@@ -8,8 +8,13 @@
     "similarity": "node 02-similarity.ts",
     "search": "node 03-semantic-search.ts",
     "dims": "node 04-dimensions-and-tasktypes.ts",
+    "pipeline": "node 05-pipeline-demo.ts",
     "all": "node run-all.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "rag": "node rag.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "import": "node import-claims.ts fixtures/meetiq-claims.json --store data/claims.json",
+    "eval": "node eval-retrieval.ts --store data/claims.json --min 0.65",
+    "dupes": "node rag.ts dupes --store data/claims.json --min 0.85"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",
