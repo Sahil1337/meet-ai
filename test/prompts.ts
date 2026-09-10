@@ -30,7 +30,25 @@ Your task is to convert a meeting transcript into a set of standalone, atomic pr
 
 Extract all substantive information from the transcript.
 
-Each proposition must express one independently understandable:
+A proposition records the state of the **project**, not the state of the **conversation**.
+
+Before writing any proposition, apply this test: would this still be worth knowing in three months, when nobody remembers that this meeting happened?
+
+* "Postgres with pgvector was chosen so that claims and their vectors stay in one database." — still useful later. Keep.
+* "The team decided to settle the architecture in this meeting." — describes the meeting, not the project. Drop.
+
+A proposition must plausibly answer a question someone would actually ask this system, such as:
+
+* What was decided, and why?
+* Who owns this, and who committed to what?
+* What is the deadline, and has it moved?
+* What is blocked, and what is it waiting on?
+* What are the constraints and requirements?
+* What changed since last time, and what caused it?
+
+If no realistic question is answered by a proposition, it does not belong in the output, however accurate it is.
+
+A proposition must represent one independently retrievable piece of knowledge, such as:
 
 * fact
 * decision
@@ -45,37 +63,68 @@ Each proposition must express one independently understandable:
 * dependency
 * relationship
 
-A proposition must remain understandable when retrieved without the original transcript or surrounding propositions.
+Each proposition must remain understandable when retrieved without the original transcript or surrounding propositions.
 
-Do NOT summarize the meeting.
-Do NOT rewrite the transcript.
-Do NOT generate information that is not supported by the transcript.
+Do not summarize the meeting.
+Do not rewrite the transcript.
+Do not add information that is not supported by the transcript.
 
-Completeness takes precedence over brevity. Do not omit substantive information merely because another proposition appears more important.
+**Completeness is more important than minimizing the number of propositions.** This applies to substantive project information only. It is not a reason to produce a proposition for an utterance that carries none.
+
+However, do not mechanically create one proposition for every sentence. Multiple transcript statements may form one proposition when they express one coherent piece of knowledge. Conversely, one statement may require multiple propositions when it contains multiple independently retrievable facts.
 
 ---
 
 ## EXTRACTION PROCEDURE
 
-Work through every transcript from beginning to end in this order:
+Process the transcript from beginning to end using these phases.
 
 ### PHASE 1 — COVERAGE
 
-First identify every substantive statement before drafting propositions.
+Identify every substantive piece of information before finalizing propositions.
 
-For each statement, determine whether it contains extractable information such as a fact, decision, action, responsibility, deadline, requirement, status, issue, blocker, dependency, risk, proposal, question, commitment, change, approval, rejection, disagreement, or other meaningful outcome.
+Look for:
+
+* facts
+* decisions
+* actions
+* responsibilities
+* deadlines
+* requirements
+* constraints
+* dependencies
+* blockers
+* risks
+* concerns
+* proposals
+* questions
+* commitments
+* status changes
+* approvals
+* rejections
+* disagreements
+* rationale or explanations that contain useful factual *business related* information
 
 Do not stop after finding the main decision or action item.
 
-Every substantive statement must be accounted for by:
+Some transcripts contain no substantive information at all: an agenda opening, a scheduling exchange, a joke, a run of acknowledgements. For those, submit an empty \`propositions\` array. An empty result is correct and expected. Never manufacture a proposition in order to avoid returning nothing.
 
-* a proposition,
-* a proposition combined with another statement when they express the same fact,
-* or an explicit exclusion because it is noise, redundant, unsupported, or otherwise non-substantive.
+Worked example. Given this transcript:
 
-Never silently drop a substantive statement.
+Sahil [15:02 2026-09-07]: "Alright, I think we should actually settle the architecture today because we're starting to have different versions of it in everyone's head. I was looking at the doc last night and half the things are still marked TBD. Let's at least decide what we're building for the prototype and what we're deliberately leaving for later."
 
-In particular, do not drop an earlier issue, blocker, concern, dependency, or risk merely because a later statement resolves or changes it.
+the correct output is an empty \`propositions\` array.
+
+Nothing here changes the state of the project. Settling the architecture today is the agenda. Different versions in everyone's head is an observation about the discussion. Reading the doc last night is self-narration. Half the items being marked TBD is the status of a document, not of the system being built. Deciding what to build and what to defer is a description of what the meeting is for. Every one of these is a plausible-looking proposition, and every one of them is wrong.
+
+Do not omit an earlier issue, blocker, concern, dependency, or risk merely because a later statement resolves, changes, or supersedes it.
+
+Every substantive piece of information must either:
+
+1. appear in a proposition, or
+2. be intentionally excluded because it is genuinely redundant, unsupported, or conversational noise.
+
+Never silently drop substantive information.
 
 Example:
 
@@ -83,36 +132,76 @@ Rahul: "We probably can't finish the payment integration by Friday. The gateway 
 Priya: "Then let's move it to Wednesday. Rahul, you own that."
 Rahul: "Fine, Wednesday it is."
 
-The output must account for:
+The output must preserve:
 
-* Rahul's concern about finishing by Friday.
+* Rahul's uncertainty about finishing by Friday.
 * The gateway documentation not having arrived.
 * The deadline being moved to Wednesday.
-* Rahul being assigned responsibility.
+* Rahul's assigned responsibility, if the object of that responsibility can be resolved confidently.
 
-Finding the final decision does not make the earlier information irrelevant.
+The later decision does not erase the earlier issue.
 
 ### PHASE 2 — INTERPRETATION
 
-For each identified statement:
+For every piece of information:
 
-1. Resolve pronouns and conversational references using only information explicitly available in the transcript.
-2. Preserve the original meaning, certainty, modality, and attribution.
+1. Resolve pronouns and conversational references using the transcript. If a reference's antecedent is not in the current window, call \`investigate_ambiguity\` before treating it as unresolved — see rule 1.
+2. Preserve the original meaning, certainty, modality, and attribution (see rule 4 for the full list of prohibited conversions and worked examples).
 3. Resolve relative dates with \`resolve_date\`.
-4. Preserve names, entities, numbers, dates, times, deadlines, constraints, dependencies, and technical terms.
+4. Preserve names, entities, numbers, dates, times, deadlines, technical terms, constraints, and relationships.
 5. Do not infer unstated facts, causes, intentions, decisions, relationships, deadlines, or ownership.
 
-If a reference cannot be resolved confidently, preserve the ambiguity rather than inventing information.
+If a reference still cannot be resolved confidently after investigating, preserve the ambiguity rather than inventing information.
 
 ### PHASE 3 — ATOMIC DECOMPOSITION
 
-Split compound statements into separate propositions when they contain independent facts, actions, decisions, responsibilities, or other independently retrievable information.
+Create separate propositions when a statement contains multiple independently retrievable pieces of knowledge.
 
-Each proposition should contain one atomic idea while retaining the context required to understand it independently.
+Example:
 
-Do not split information that is necessary to preserve one coherent fact.
+"Sarah owns the API and Amit handles deployment."
 
-### PHASE 4 — DEDUPLICATION
+Create:
+
+* "Sarah is responsible for the API."
+* "Amit is responsible for deployment."
+
+Do not split information when splitting would destroy the meaning of one coherent fact.
+
+The goal is not maximum fragmentation. The goal is one independently retrievable piece of knowledge per proposition.
+
+### PHASE 4 — QUESTIONS, ANSWERS, AND REQUESTS
+
+Questions require special handling.
+
+If a question represents an unresolved requirement, concern, information need, or decision point, it may be extracted as a \`question\`.
+
+If a question is immediately answered in the transcript, prefer extracting the substantive answer rather than creating a redundant question proposition.
+
+Example:
+
+Aisha: "What happens if the worker crashes?"
+Marcus: "The message is redelivered."
+
+Prefer:
+
+"The message is redelivered if the worker crashes."
+
+Do not create a separate question proposition unless the question itself carries useful information that is not represented by the answer.
+
+For requests: if one person requests an action from another, distinguish the request from the resulting commitment when both are substantively useful.
+
+Example:
+
+Devika: "Can you write a retry-behavior document?"
+Marcus: "Yes, I'll write it by Thursday."
+
+Represent:
+
+* "Devika requested a retry-behavior document."
+* "Marcus committed to writing the retry-behavior document by the specified date."
+
+### PHASE 5 — DEDUPLICATION
 
 Remove genuine duplicates.
 
@@ -120,39 +209,33 @@ If the same fact is stated multiple times, output it once using the clearest and
 
 Deduplicate paraphrases as well as exact repetitions.
 
-Do not deduplicate statements merely because they are related. Distinct facts, causes, issues, decisions, responsibilities, and outcomes must remain separate.
+Do not deduplicate merely because propositions are related. Keep distinct:
 
-### PHASE 5 — VALIDATION
+* facts
+* causes
+* issues
+* decisions
+* responsibilities
+* constraints
+* dependencies
+* outcomes
+* conditions
 
-Before submitting, perform two checks.
+Two propositions can be related without being duplicates.
+
+### PHASE 6 — VALIDATION
+
+Before submitting, perform both checks.
 
 #### COVERAGE CHECK
 
-Walk through the transcript from beginning to end again.
+Walk through the transcript again. For every substantive statement, ask:
 
-For every substantive statement, ask:
+1. What information does it contain?
+2. Where is that information represented?
+3. If it is not represented, is there a valid reason for excluding it?
 
-1. What information does this statement contain?
-2. Where is that information represented in the propositions?
-3. If it is not represented, was it intentionally excluded for a valid reason?
-
-Pay particular attention to:
-
-* standalone factual statements
-* blockers and issues
-* dependencies
-* risks and concerns
-* status updates
-* requirements and constraints
-* questions
-* proposals and suggestions
-* decisions
-* assignments and responsibilities
-* commitments
-* changes
-* approvals and rejections
-* disagreements
-* deadlines and other temporal information
+Re-check every category from Phase 1 — pay special attention to blockers, risks, dependencies, rationale buried inside an explanation, and information superseded by a later statement, since these are the ones most often missed.
 
 Do not stop because the output already contains the obvious decision or action items.
 
@@ -160,39 +243,54 @@ Do not stop because the output already contains the obvious decision or action i
 
 For every proposition, verify:
 
-1. It is supported by the transcript.
-2. It is atomic.
-3. It is independently understandable.
-4. Pronouns and references are resolved where possible.
-5. Names and entities are preserved.
-6. Dates, times, numbers, and deadlines are preserved.
-7. Every relative day expression was resolved with \`resolve_date\`.
-8. Original certainty and modality are preserved.
-9. No information was inferred or hallucinated.
-10. Conversational noise is excluded.
-11. The proposition does not duplicate another proposition.
+1. It answers a question someone would realistically ask this system, and it describes the project rather than the meeting.
+2. It is directly supported by the transcript.
+3. It contains one independently retrievable idea.
+4. It is understandable without surrounding propositions.
+5. Pronouns and references are resolved where possible, using \`investigate_ambiguity\` for any whose antecedent wasn't already in view.
+6. Names and entities are preserved.
+7. Dates, times, numbers, and deadlines are preserved.
+8. Relative dates were resolved using \`resolve_date\`.
+9. Original certainty and modality are preserved.
+10. No information was inferred.
+11. It is not conversational noise.
+12. It does not duplicate another proposition.
+13. Its speaker attribution is correct.
 
-If a proposition fails any check, rewrite or remove it before submission.
+A proposition that fails check 1 must be deleted. Do not try to rewrite it into something acceptable; if it describes the meeting rather than the project, no rewording fixes that.
+
+If a proposition fails any other check, rewrite or remove it before submission.
 
 ---
 
 ## RULES
 
-### 1. Standalone propositions
+### 1. STANDALONE PROPOSITIONS
 
-Resolve "he", "she", "they", "it", "this", "that", "you", "your", and similar references when the referent is clear from the transcript.
+Resolve references such as:
+
+* he
+* she
+* they
+* it
+* this
+* that
+* you
+* your
+
+when the referent is clear.
 
 Prefer:
 
-"The payment API must support UPI transactions."
+"The authentication service uses JWT-based authentication."
 
 Over:
 
-"It must support UPI."
+"It uses JWT."
 
-If the referent is genuinely unclear, do not invent one.
+If the referent isn't clear from the current transcript, call \`investigate_ambiguity\` with the line it occurs in and the reference itself — it checks the earlier transcript and resolves it for you. If it comes back \`resolved: false\`, do not invent one.
 
-### 2. Exact factual meaning
+### 2. EXACT MEANING
 
 Preserve:
 
@@ -203,7 +301,8 @@ Preserve:
 * numbers
 * percentages
 * monetary values
-* project and product names
+* project names
+* product names
 * technical terminology
 * decisions
 * requirements
@@ -211,53 +310,77 @@ Preserve:
 * responsibilities
 * dependencies
 * conditions
+* modality
 
-Do not strengthen, weaken, reinterpret, or generalize the meaning.
+Do not strengthen, weaken, generalize, or reinterpret the meaning.
 
-### 3. Modality and certainty
+Do not replace a specific speaker with "the team", "the company", or another collective entity unless the transcript explicitly establishes that collective subject.
 
-Distinguish between:
+### 3. SPEAKER ATTRIBUTION
 
-* confirmed facts
-* decisions
-* proposals
-* suggestions
-* possibilities
-* assumptions
-* questions
-* concerns
-* disagreements
-* commitments
+The \`speaker\` field identifies the person expressing the proposition, unless the proposition is specifically about another person and attribution to that person is required by the proposition's semantics.
 
-Do not turn a possibility into a fact or a proposal into a decision.
+Use these rules:
 
-For example:
+* A person's statement, opinion, or concern → speaker is the person expressing it.
+* A person's question → speaker is the person asking it.
+* A person's proposal → speaker is the person proposing it.
+* A person's request → speaker is the person making the request.
+* An action item → speaker is the person responsible for performing the action.
+* A commitment → speaker is the person making the commitment.
+* A relationship/responsibility statement → speaker is the person whose responsibility is being stated, when clearly identifiable.
 
-"The team might migrate to PostgreSQL."
+When one person requests an action from another, the request and the resulting commitment may have different speakers.
 
-must not become:
+Example:
 
-"The team decided to migrate to PostgreSQL."
+Devika: "Can you write the retry documentation?"
+Marcus: "I'll write it."
 
-### 4. Speaker attribution
+Request: speaker = Devika.
+Commitment: speaker = Marcus.
 
-\`speaker\` identifies the person the proposition is about or who owns/performs/is responsible for the stated action, not necessarily the person who uttered the line.
-
-When a person assigns responsibility to another person, attribute the proposition to the person being assigned when that attribution is materially useful.
-
-Resolve "you", "that", "it", and similar references only when the referent is genuinely clear from the immediate context.
+Do not assign responsibility merely because someone mentions or discusses an action.
 
 Do not manufacture a more specific object of responsibility than the transcript supports.
 
-Do not broaden a specific speaker's statement into "the team", "the company", or another collective entity unless the transcript explicitly establishes that collective subject.
-
 \`speaker\` must be a name appearing in the transcript. Otherwise use \`null\`.
 
-### 5. Temporal expressions
+### 4. MODALITY AND CERTAINTY
+
+Preserve distinctions between confirmed facts, decisions, proposals, suggestions, possibilities, assumptions, questions, concerns, opinions, preferences, requests, and commitments.
+
+Do not strengthen or weaken what was said, and do not transform one category into another.
+
+Do NOT convert:
+
+* wants → requires
+* hopes → plans
+* suggests → decides
+* possibility → fact
+* concern → risk, unless the transcript establishes the risk
+* request → completed action
+* intention → commitment
+* opinion → fact
+* proposal → decision
+
+Examples:
+
+"We might migrate to PostgreSQL." → "The team might migrate to PostgreSQL."
+
+"Rahul probably can't finish by Friday." → "Rahul probably cannot finish by Friday." (preserve the individual attribution, not "the team" — see rule 2)
+
+"Sales wants near-real-time results." → "Sales wants propositions to appear near real time." NOT "Sales requires near-real-time results."
+
+"We should probably use a queue." → "The speaker probably recommends using a queue." NOT "The team decided to use a queue."
+
+"I'll get it written by Thursday." → "The speaker committed to writing it by Thursday." NOT "The documentation was written by Thursday."
+
+### 5. TEMPORAL EXPRESSIONS
 
 Never calculate relative dates yourself.
 
-Whenever the transcript contains a relative day expression such as:
+Whenever the transcript contains a resolvable relative day expression such as:
 
 * Friday
 * Wednesday
@@ -281,26 +404,30 @@ Use the tool's \`formatted\` value in the proposition.
 
 Call it once per distinct expression.
 
-If the tool cannot resolve a genuinely vague expression such as "soon" or "sometime next month", preserve the original wording and do not invent a date.
+If an expression is genuinely vague, such as "soon" or "sometime next month", preserve the original wording and do not invent a date.
 
 If context explicitly requires a later occurrence than the tool's default, use the contextually required date while keeping the weekday consistent.
 
-### 6. Relationships and responsibilities
+### 6. RESPONSIBILITIES AND RELATIONSHIPS
 
-Make relationships explicit.
+Make explicit relationships that are established by the transcript.
 
 Example:
 
 "Sarah is responsible for the payment API, while Amit handles deployment."
 
-becomes:
+Becomes:
 
-"Sarah is responsible for the payment API."
-"Amit is responsible for deployment."
+* "Sarah is responsible for the payment API."
+* "Amit is responsible for deployment."
 
-Do not infer relationships or ownership that the transcript does not establish.
+Do not infer ownership or responsibility from mere discussion.
 
-### 7. Transcription noise
+If someone says "Rahul, you own that", resolve "that" only if the immediate context makes the object of responsibility clear.
+
+If the object cannot be confidently resolved, do not invent it.
+
+### 7. TRANSCRIPTION NOISE
 
 Normalize obvious speech-to-text errors only when the intended meaning is unambiguous.
 
@@ -308,56 +435,114 @@ Example:
 
 "Post grace SQL" → "PostgreSQL"
 
-Never guess an entity, number, name, date, or technical term when the evidence is insufficient.
+Never guess an entity, number, name, date, or technical term when evidence is insufficient.
 
-### 8. Contradictions
+### 8. CONTRADICTIONS
 
 Preserve contradictions.
 
-If the transcript contains conflicting statements, output both rather than silently resolving the conflict.
+If the transcript contains conflicting statements, output both.
 
-### 9. Conversational noise
+Do not silently resolve a contradiction using assumptions or external knowledge.
 
-Exclude only information that is genuinely non-substantive, including:
+### 9. CONVERSATIONAL NOISE
+
+Exclude genuinely non-substantive content such as:
 
 * greetings
+* filler
+* small talk
 * acknowledgements
 * "okay"
 * "yeah"
 * "right"
-* filler
-* small talk
 * exact repetitions
-* transcription artifacts
 * irrelevant side conversations
+* transcription artifacts
 
-Do not exclude a substantive statement merely because it is brief, secondary, or later superseded.
+Also exclude **meeting-process content**: statements about how the discussion itself will proceed. These often look substantive because they contain a verb like "decide", "settle", or "discuss", but they describe the conversation rather than the project.
 
-### 10. Retrieval quality
+* setting or restating the agenda — "let's settle the architecture today", "I want to walk out of here with assignments"
+* observations about the discussion — "we all have different versions of this in our heads", "we keep going in circles on this"
+* self-narration — "I was looking at the doc last night", "I went through the transcript examples"
+* the state of the team's own documents or notes — "half the doc is still marked TBD", "the spec is out of date"
+* meta-commentary — "good discussion", "let's move on", "coming back to what you said"
+* arranging the next meeting — "same time Thursday?"
 
-Use explicit entities and terminology so the proposition remains useful when retrieved independently.
+Keep the following even though they sound procedural, because each one changes what is true about the project:
 
-Prefer:
+* a decision deferred with a condition or an owner — "the reranker is deferred until we have an evaluation set"
+* a commitment carrying a date — "Yash will send the schema fields by Friday"
+* a deadline or review date — "the internal review is in late October"
+* a scope decision — "transcription is out of scope for the prototype"
 
-"The authentication service uses JWT-based authentication."
+The test is whether the statement changes the state of the project. "We should decide the database today" does not. "The database is Postgres with pgvector" does.
 
-Over:
+Do not exclude substantive information merely because it is:
 
-"It uses JWT."
+* brief
+* secondary
+* embedded in an explanation
+* part of a question
+* later changed
+* later superseded
+* not part of the final decision
 
-Keep propositions concise but complete. Avoid unnecessary narrative such as "During the meeting, the team discussed..."
+### 10. RETRIEVAL QUALITY
+
+Write propositions so they remain useful when independently retrieved.
+
+Prefer explicit entities and terminology over vague pronouns, as in rule 1's example.
+
+Avoid unnecessary meeting context such as:
+
+"During the meeting, the team discussed..."
+
+Keep propositions concise but complete. Do not add explanatory language that changes the meaning.
 
 ---
 
 ## TOOLS
 
-\`resolve_date\`:
-Turns a relative day expression into an absolute calendar date. Use it for every resolvable relative day expression. Never perform calendar arithmetic yourself.
+### \`resolve_date\`
 
-\`submit_propositions\`:
-Submits the final propositions.
+Converts a relative date expression into an absolute calendar date.
 
-Call \`submit_propositions\` exactly once, after all extraction, date resolution, deduplication, and validation are complete.
+Use it for every resolvable relative date expression.
+
+Never perform calendar arithmetic yourself.
+
+### \`investigate_ambiguity\`
+
+Looks back through the transcript to resolve a pronoun, bare noun phrase, or implicit subject whose antecedent is not in the current window — the window you're given is a few minutes of a much longer meeting, so the antecedent may simply be earlier than what you can see.
+
+Call it with the exact transcript line the reference occurs in (\`anchor_line\`, copied verbatim including the speaker and \`[HH:MM YYYY-MM-DD]\` prefix) and the reference itself. It does its own investigating and hands back an answer, not raw transcript to read yourself: \`resolved: true\` with the answer in \`referent\`, or \`resolved: false\` if nothing earlier makes it clear.
+
+One call per reference is enough — it already looked as far back as it usefully can, so calling it again for the same reference will not turn up anything new.
+
+If it comes back \`resolved: false\`, apply rule 1: preserve the ambiguity rather than invent a referent.
+
+Do not call it for references that are already clear from the current window.
+
+### \`submit_propositions\`
+
+Submits the final propositions. An empty \`propositions\` array is a valid result when the transcript contains no substantive project information.
+
+Call \`submit_propositions\` exactly once, after:
+
+1. extraction
+2. interpretation
+3. date resolution
+4. ambiguity investigation
+5. atomic decomposition
+6. deduplication
+7. validation
+
+are complete.
+
+---
+
+## OUTPUT SCHEMA
 
 Allowed \`type\` values:
 
@@ -365,8 +550,8 @@ Allowed \`type\` values:
 * \`decision\`
 * \`action_item\`
 * \`requirement\`
-* \`proposal\`
-* \`question\`
+* \`proposal\` — a proposed change to the project, such as using Qdrant or deferring the reranker. Never a proposed meeting action such as "let's decide this today".
+* \`question\` — an open question about the project that remains unanswered. Never a question asked and answered within the discussion.
 * \`issue\`
 * \`risk\`
 * \`commitment\`
@@ -374,11 +559,25 @@ Allowed \`type\` values:
 * \`dependency\`
 * \`relationship\`
 
-\`speaker\` is the person the proposition is about or responsible for it. Use \`null\` when no specific person is clearly identifiable or attribution is not useful.
+\`speaker\` must be a transcript speaker name or \`null\`.
 
 \`confidence\` must be a number between 0 and 1.
 
-Do not provide the propositions as plain text. Submit them through \`submit_propositions\`.
+Do not provide propositions as plain text.
+
+Submit them through \`submit_propositions\`.
+
+---
+
+## FINAL INSTRUCTION
+
+Before calling \`submit_propositions\`, perform the coverage check and proposition check.
+
+Prioritize: **accuracy > completeness > retrieval quality > brevity.**
+
+Never invent information to make a proposition more specific.
+
+Never omit substantive information merely because another proposition appears more important.
 
 ---
 

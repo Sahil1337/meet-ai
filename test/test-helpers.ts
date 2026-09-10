@@ -117,6 +117,70 @@ export function speakersOf(transcript: string): string[] {
   ];
 }
 
+/**
+ * Splits one long meeting transcript into sequential windows sized to
+ * ~targetSeconds of estimated speaking time, cutting only between lines —
+ * never mid-utterance. This is how a real meeting has to be fed to the
+ * proxy: the system prompt alone is ~2600 tokens, and a full 15-minute
+ * transcript plus the agentic loop's resolve_date round trips would blow
+ * past MAX_PROMPT_TOKENS (7000) or NUM_CTX (8192) well before the model
+ * gets to submit_propositions. Each window is extracted independently, same
+ * as it would be in production; stitching windows back together over time
+ * is the project-memory layer's job, not the extraction agent's (see
+ * files/temp.md, "Source → Claim → Entity → State → Change") — rule 1
+ * ("preserve ambiguity rather than inventing an identity") already covers a
+ * pronoun whose antecedent fell in an earlier window.
+ */
+export function chunkBySpeakingTime(
+  transcript: string,
+  targetSeconds = 30,
+  toleranceSeconds = 10,
+  wordsPerSecond = 2.3, // ~140 wpm conversational pace
+): string[] {
+  const lines = transcript.split("\n").filter(Boolean);
+  const maxSeconds = targetSeconds + toleranceSeconds;
+  const chunks: string[] = [];
+  let current: string[] = [];
+  let seconds = 0;
+  for (const line of lines) {
+    const text = line.slice(line.indexOf("]: ") + 3);
+    const lineSeconds = text.trim().split(/\s+/).length / wordsPerSecond;
+    if (current.length > 0 && seconds + lineSeconds > maxSeconds) {
+      chunks.push(current.join("\n"));
+      current = [];
+      seconds = 0;
+    }
+    current.push(line);
+    seconds += lineSeconds;
+  }
+  if (current.length > 0) chunks.push(current.join("\n"));
+  return chunks;
+}
+
+/**
+ * Turns one long meeting transcript into labeled, sequential Fixture chunks.
+ * Each fixture also carries everything spoken before it (precedingTranscript)
+ * so investigate_ambiguity has something to search when a chunk's reference
+ * points at an earlier one — see src/ambiguity-tool.ts and extractPropositions.
+ */
+export function fixturesFromMeeting(
+  name: string,
+  transcript: string,
+  targetSeconds = 30,
+): Fixture[] {
+  const chunks = chunkBySpeakingTime(transcript, targetSeconds);
+  let preceding = "";
+  return chunks.map((chunk, i) => {
+    const fixture: Fixture = {
+      name: `${name} — chunk ${i + 1}/${chunks.length}`,
+      transcript: chunk,
+      ...(preceding ? { precedingTranscript: preceding } : {}),
+    };
+    preceding = preceding ? `${preceding}\n${chunk}` : chunk;
+    return fixture;
+  });
+}
+
 // Raw response, exactly as the proxy returned it
 
 function printRaw(completion: ChatCompletion, parsed: unknown): void {
@@ -290,7 +354,7 @@ async function runOne(
   console.log(
     heading(
       "REQUEST",
-      "single conversation: resolve_date + submit_propositions tools",
+      "single conversation: resolve_date + investigate_ambiguity + submit_propositions tools",
     ),
   );
 
@@ -300,12 +364,13 @@ async function runOne(
   let thinkingStarted = false;
   let contentStarted = false;
   try {
-    const { value, completion, hops, dateCalls } = await extractPropositions<{
+    const { value, completion, hops, dateCalls, ambiguityCalls } = await extractPropositions<{
       propositions: Proposition[];
     }>(cfg.client, cfg.systemPrompt, fixture.transcript, cfg.schema, {
       mode: cfg.mode,
       stream: cfg.stream,
       toolChoice: cfg.toolChoice,
+      precedingTranscript: fixture.precedingTranscript,
       onChunk: (chunk) => {
         if (!cfg.stream) return;
         const delta = chunk.choices[0]?.delta;
@@ -351,7 +416,7 @@ async function runOne(
     printRaw(completion, value);
     const m = completion.meetiq;
     const meta =
-      `mode=${m.mode_used} (${m.router.rule})  tool_parse=${m.tool_parse}  finish=${completion.choices[0]?.finish_reason}  hops=${hops}  date_calls=${dateCalls}  ` +
+      `mode=${m.mode_used} (${m.router.rule})  tool_parse=${m.tool_parse}  finish=${completion.choices[0]?.finish_reason}  hops=${hops}  date_calls=${dateCalls}  ambiguity_calls=${ambiguityCalls}  ` +
       `tokens in=${completion.usage.prompt_tokens} out=${completion.usage.completion_tokens}  retries=${m.retries}` +
       (m.mode_used === "thinking"
         ? `  reasoning_tokens=${completion.usage.completion_tokens_details.reasoning_tokens}`

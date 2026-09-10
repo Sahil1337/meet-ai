@@ -18,6 +18,14 @@ export type Proposition = {
 export type Fixture = {
   name: string;
   transcript: string;
+  /**
+   * Transcript spoken before this window, oldest first — not sent to the
+   * model as context, only searched by investigate_ambiguity (see
+   * src/ambiguity-tool.ts) when a reference's antecedent fell in an earlier
+   * chunk. Populated by fixturesFromMeeting(); absent for a standalone
+   * fixture or the first chunk of a meeting.
+   */
+  precedingTranscript?: string;
 };
 
 export type EvalConfig = {

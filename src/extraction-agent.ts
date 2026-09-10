@@ -8,6 +8,7 @@
  * output: the schema is a tool, not a separate decoding mode).
  */
 
+import { INVESTIGATE_AMBIGUITY_TOOL, investigateAmbiguityHandler } from "./ambiguity-tool.ts";
 import type { QwenProxyClient } from "./client.ts";
 import { RESOLVE_DATE_TOOL, resolveDateHandler } from "./date-tool.ts";
 import type { ChatChunk, ChatCompletion, ChatMessage, Mode, Tool, ToolCall, ToolChoice } from "./shared/types.ts";
@@ -20,7 +21,7 @@ function submitPropositionsTool(schema: Record<string, unknown>): Tool {
     function: {
       name: SUBMIT_PROPOSITIONS_TOOL_NAME,
       description:
-        "Submit the final list of extracted propositions. Call this exactly once, after every relative date has been resolved with resolve_date, to end the conversation.",
+        "Submit the final list of extracted propositions. Call this exactly once, after every relative date has been resolved with resolve_date, to end the conversation. An empty array is a valid result when the transcript carries no substantive project information.",
       parameters: schema,
     },
   };
@@ -36,6 +37,16 @@ export async function extractPropositions<T = { propositions: unknown[] }>(
     stream?: boolean;
     maxHops?: number;
     toolChoice?: ToolChoice;
+    /**
+     * Transcript spoken before `transcript`'s window, oldest first —
+     * everything fixturesFromMeeting() (test/test-helpers.ts) already
+     * chunked away. Not sent to the model up front; investigate_ambiguity
+     * searches it on demand so a reference whose antecedent fell in an
+     * earlier window can still be resolved instead of just preserved as
+     * ambiguous (rule 1). Omit for the first window, or when the caller has
+     * no earlier transcript to offer.
+     */
+    precedingTranscript?: string;
     onChunk?: (chunk: ChatChunk) => void;
     onToolCall?: (call: ToolCall, result: unknown) => void;
   } = {},
@@ -45,27 +56,47 @@ export async function extractPropositions<T = { propositions: unknown[] }>(
   messages: ChatMessage[];
   hops: number;
   dateCalls: number;
+  ambiguityCalls: number;
 }> {
   let dateCalls = 0;
+  let ambiguityCalls = 0;
   const messages: ChatMessage[] = [
     { role: "system", content: systemPrompt },
     { role: "user", content: transcript },
   ];
+  // investigate_ambiguity's search space: everything the model could
+  // plausibly need to look back through, including the window it's
+  // currently extracting from (a reference can point at an earlier line in
+  // the same window too, though the model shouldn't need the tool for that).
+  const knownTranscript = options.precedingTranscript
+    ? `${options.precedingTranscript}\n${transcript}`
+    : transcript;
 
   const result = await client.runToolsUntil<T>(
     messages,
-    [RESOLVE_DATE_TOOL, submitPropositionsTool(schema)],
+    [RESOLVE_DATE_TOOL, INVESTIGATE_AMBIGUITY_TOOL, submitPropositionsTool(schema)],
     SUBMIT_PROPOSITIONS_TOOL_NAME,
     {
       resolve_date: (args) => {
         dateCalls++;
         return resolveDateHandler(args);
       },
+      investigate_ambiguity: (args) => {
+        ambiguityCalls++;
+        // Its own isolated model call (see ambiguity-tool.ts) — not another
+        // hop of this conversation, so it doesn't grow `messages` beyond the
+        // compact { resolved, referent } it returns.
+        return investigateAmbiguityHandler(args, knownTranscript, client);
+      },
     },
     {
       mode: options.mode,
       temperature: 0,
-      maxHops: options.maxHops ?? 8,
+      // investigate_ambiguity now resolves in one hop per reference (the
+      // widening happens inside its own isolated call, not as extra hops
+      // here), so this mainly needs to cover: one hop per distinct
+      // ambiguous reference + one per distinct date expression + submit.
+      maxHops: options.maxHops ?? 10,
       stream: options.stream,
       toolChoice: options.toolChoice,
       onChunk: options.onChunk,
@@ -73,5 +104,5 @@ export async function extractPropositions<T = { propositions: unknown[] }>(
     },
   );
 
-  return { ...result, dateCalls };
+  return { ...result, dateCalls, ambiguityCalls };
 }
