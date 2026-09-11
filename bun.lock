@@ -63,7 +63,9 @@
         "@meetai/ai": "workspace:*",
         "@meetai/core": "workspace:*",
         "@meetai/ingestion": "workspace:*",
+        "@t3-oss/env-core": "^0.13.11",
         "qwen-proxy": "workspace:*",
+        "zod": "^4.5.4",
       },
       "devDependencies": {
         "@meetai/tsconfig": "workspace:*",
@@ -99,6 +101,8 @@
       "version": "0.0.0",
       "dependencies": {
         "@meetai/core": "workspace:*",
+        "@t3-oss/env-core": "^0.13.11",
+        "zod": "^4.5.4",
       },
       "devDependencies": {
         "@meetai/tsconfig": "workspace:*",
