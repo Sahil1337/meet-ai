@@ -12,7 +12,7 @@ in [`docs/architecture.md`](docs/architecture.md); who builds what in
 
 ```
 apps/            things that run — each has a process and a deploy target
-  proxy/         qwen-proxy: OpenAI-compatible server over Ollama/Qwen3.5 (public mirror, do not edit)
+  proxy/         qwen-proxy: OpenAI-compatible server over Ollama/Qwen3.5
   api/           the backend: HTTP surface + composition root        (unit 1)
   web/           the frontend: React, consumes the HTTP API only      (unit 5)
 packages/        things that get imported — never run standalone
@@ -58,11 +58,12 @@ unless something genuinely needs one.
 - **Nothing in `packages/` imports from `apps/`.** The one exception is
   `qwen-proxy`, which publishes a client through its `exports` map — that is
   a maintained contract, not an app internal.
-- **`apps/proxy/` is public.** It mirrors out to
-  [Sahil1337/qwen-proxy](https://github.com/Sahil1337/qwen-proxy) (MIT, forked
-  by others) via `bun run mirror:proxy`. Nothing meetAI-private goes in that
-  directory — no prompts, no fixtures, no transcripts, no schema — and its
-  `LICENSE`, `AGENTS.md` and house style stay as they are.
+- **This repository is public, and it began life as `qwen-proxy`.** It was
+  renamed to `meet-ai`; the proxy's own history is still here, and so are the
+  people who starred and forked it when it was a standalone proxy. That is why
+  `apps/proxy/` keeps its own `LICENSE` (MIT), `AGENTS.md` and house style —
+  single quotes, 120 columns, NodeNext `.js` specifiers. Follow those inside
+  that directory and the root style outside it.
 - **`.env` per app, never one at the root.** The proxy runs on a different
   machine than the API; a shared env file would be a lie.
 - **The proxy is a dumb, stateless endpoint.** Retrieval, embeddings, memory
