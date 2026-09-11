@@ -75,22 +75,10 @@ transcript → windows → extraction (LLM + tools) → propositions
 ```
 
 Extraction runs against a **self-hosted Qwen3.5-4B on a laptop GPU** — an RTX
-3050 with 4 GB of VRAM — rather than a hosted API, so the system can be
-demonstrated without depending on someone's API key or an internet service being
-up. That constraint shapes everything: small context windows, JSON-schema
-constrained output, and tool calls instead of one giant prompt.
-
-## If you starred or forked `qwen-proxy`
-
-You are in the right place — this repository **was** `qwen-proxy`, renamed. The
-proxy is still here at [`apps/proxy/`](apps/proxy/), still MIT licensed, still
-usable on its own: a minimal OpenAI-compatible server over Ollama with adaptive
-thinking, tool-call parsing for models whose chat templates do not emit
-`tool_calls`, and validated structured output. Its README, its docs and its
-commit history all moved with it, and it gained a considerably better client on
-the way. See [`apps/proxy/README.md`](apps/proxy/README.md).
-
-meetAI grew around it because the proxy was always the thing meetAI needed.
+3050 with 4 GB of VRAM — rather than a hosted API, so the whole system runs end
+to end with no API keys and no external dependency. That constraint shapes
+everything: small context windows, JSON-schema constrained output, and tool
+calls instead of one giant prompt.
 
 ## Running it
 
