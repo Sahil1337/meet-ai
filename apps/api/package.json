@@ -1,0 +1,23 @@
+{
+  "name": "@meetai/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@meetai/ai": "workspace:*",
+    "@meetai/core": "workspace:*",
+    "@meetai/ingestion": "workspace:*",
+    "@meetai/memory": "workspace:*",
+    "@meetai/retrieval": "workspace:*",
+    "qwen-proxy": "workspace:*"
+  },
+  "devDependencies": {
+    "@meetai/tsconfig": "workspace:*",
+    "typescript": "^5"
+  }
+}

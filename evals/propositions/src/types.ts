@@ -1,26 +1,17 @@
 /**
- * Types for the evaluation harness: a transcript fixture, the harness config,
- * and one run's outcome. The proposition shape itself is domain, not harness,
- * and lives in `@meetai/core`; it is re-exported here for convenience.
+ * Harness types: a fixture, the run configuration, one run's outcome. The
+ * proposition and request shapes are domain, not harness, and come from
+ * @meetai/core.
  */
 
-import type { Proposition } from "@meetai/core";
+import type { ExtractedProposition, ExtractionRequest } from "@meetai/core";
 import type { QwenProxyClient } from "qwen-proxy/client";
 import type { Mode, ToolChoice } from "qwen-proxy/types";
 
-export type { Proposition } from "@meetai/core";
-
 export type Fixture = {
   name: string;
-  transcript: string;
-  /**
-   * Transcript spoken before this window, oldest first — not sent to the
-   * model as context, only searched by investigate_ambiguity (see
-   * src/ambiguity-tool.ts) when a reference's antecedent fell in an earlier
-   * chunk. Populated by fixturesFromMeeting(); absent for a standalone
-   * fixture or the first chunk of a meeting.
-   */
-  precedingTranscript?: string;
+  /** Exactly what production would hand the extractor for this window. */
+  request: ExtractionRequest;
 };
 
 export type EvalConfig = {
@@ -29,51 +20,33 @@ export type EvalConfig = {
   label: string;
   fixtures: Fixture[];
   systemPrompt: string;
-  schema: Record<string, unknown>;
-  /** Allowed proposition types, for the check that the model stayed inside the enum. */
-  types: string[];
   mode: Mode;
-  maxTokens?: number;
-  /** Use the streaming endpoint instead of a single buffered response. */
-  stream?: boolean;
+  /** Use the streaming endpoint; only visible when `suppress` is off. */
+  stream: boolean;
   /**
-   * 'required' (default): grammar-constrained, guaranteed-valid tool call every
-   * turn, but the proxy also forces think:false on this path — thinking never
-   * runs regardless of `mode`. 'auto': lets `mode`'s reasoning actually happen,
-   * at the cost of tool-call parsing falling back to text extraction, and the
-   * model may reply without calling any tool.
+   * `required`: grammar-constrained, guaranteed-valid tool call every turn,
+   * but the proxy forces think:false on that path. `auto`: `mode`'s reasoning
+   * actually runs, tool calls are parsed from text, and the model may answer
+   * in prose instead — which fails the fixture with `no_tool_call`.
    */
-  toolChoice?: ToolChoice;
-  /** Pause after each transcript for a verdict. Only applies in a terminal. */
+  toolChoice: ToolChoice;
+  /** Pause after each window for a verdict. Only applies in a terminal. */
   manual: boolean;
-  /** Ask the proxy for meetiq.upstream_requests and print them. */
-  debug?: boolean;
-  /**
-   * Quiet mode: print only the transcript and the extracted propositions per
-   * fixture — no system prompt/schema dump, no live streaming, no tool-call
-   * trace, no raw response, no META/CHECKS. Everything is still computed
-   * (warnings, pass/warn/fail) for the summary table at the end; only the
-   * per-fixture printing is cut down. Errors still print regardless.
-   */
-  suppress?: boolean;
-  /**
-   * Write transcript.txt + claims.json to out/latest/ at the end of the run
-   * (see saveRunOutput() in test-helpers.ts), for handing off to an agent to
-   * review. Default true.
-   */
-  saveOutput?: boolean;
-  wrapWidth?: number;
+  /** Print only the transcript and the propositions per window; checks still run for the summary. */
+  suppress: boolean;
+  /** Write out/latest/{transcript.txt,claims.json} as the run progresses. */
+  saveOutput: boolean;
 };
+
+export type Verdict = "-" | "pass" | "FAIL";
 
 export type Outcome = {
   name: string;
   status: "pass" | "warn" | "fail";
   count: number;
-  verbatim: number;
   warnings: string[];
   error?: string;
   ms: number;
-  verdict: string;
-  /** The propositions themselves, so runEvaluation() can dump transcript+claims to disk after the run. */
-  propositions: Proposition[];
+  verdict: Verdict;
+  propositions: ExtractedProposition[];
 };

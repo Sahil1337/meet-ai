@@ -1,0 +1,19 @@
+{
+  "name": "@meetai/retrieval",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@meetai/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@meetai/tsconfig": "workspace:*",
+    "typescript": "^5"
+  }
+}

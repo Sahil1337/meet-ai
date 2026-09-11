@@ -5,14 +5,15 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./prompts": "./src/prompts.ts"
+    "./prompts": "./src/prompts/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@meetai/core": "workspace:*",
-    "qwen-proxy": "workspace:*"
+    "qwen-proxy": "workspace:*",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@meetai/tsconfig": "workspace:*",
