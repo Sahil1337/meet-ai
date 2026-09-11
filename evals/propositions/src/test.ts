@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { QwenProxyClient } from "qwen-proxy/client";
-import { AGENT_PROMPT, PROPOSITIONS_SCHEMA, TYPES } from "@meetiq/ai/prompts";
+import { AGENT_PROMPT, PROPOSITIONS_SCHEMA, TYPES } from "@meetai/ai/prompts";
 import { fixturesFromMeeting, runEvaluation } from "./test-helpers.ts";
 import type { Fixture } from "./types.ts";
 
@@ -21,7 +21,7 @@ const SUPPRESS = true;
 // handing off to an agent to review. See EvalConfig.saveOutput.
 const SAVE_OUTPUT = true;
 
-// The MeetIQ kickoff meeting (Monday 2026-09-07): settling what we embed, how
+// The meetAI kickoff meeting (Monday 2026-09-07): settling what we embed, how
 // we embed it, which database, which stack, and who owns what. One continuous
 // ~40 minutes, verbatim. Contains hedged claims, deferred decisions, a
 // dependency chain (schema -> database -> API contract -> frontend), pronoun
@@ -163,7 +163,7 @@ const MEETING_TRANSCRIPT = [
 // (test-helpers.ts). 150 (+10 s tolerance = 160 max) keeps ~20 s of headroom
 // under that ceiling.
 const FIXTURES: Fixture[] = fixturesFromMeeting(
-  "MeetIQ kickoff — embeddings, DB, stack, ownership",
+  "meetAI kickoff — embeddings, DB, stack, ownership",
   MEETING_TRANSCRIPT,
   150,
 );

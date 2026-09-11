@@ -1,5 +1,5 @@
 {
-  "name": "meetiq",
+  "name": "meetai",
   "private": true,
   "workspaces": [
     "apps/*",
@@ -8,9 +8,9 @@
   ],
   "scripts": {
     "dev:proxy": "bun run --filter qwen-proxy dev",
-    "dev:api": "bun run --filter @meetiq/api dev",
-    "dev:web": "bun run --filter @meetiq/web dev",
-    "eval": "bun run --filter @meetiq/evals-propositions eval",
+    "dev:api": "bun run --filter @meetai/api dev",
+    "dev:web": "bun run --filter @meetai/web dev",
+    "eval": "bun run --filter @meetai/evals-propositions eval",
     "typecheck": "bun run --filter '*' typecheck",
     "mirror:proxy": "git subtree push --prefix apps/proxy qwen-proxy main"
   },

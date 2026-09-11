@@ -1,4 +1,4 @@
-# MeetIQ
+# meetAI
 
 Project memory and reasoning over meetings: transcripts become structured
 propositions, propositions become memory, memory answers questions about what
@@ -43,11 +43,11 @@ unless something genuinely needs one.
 - **Nothing in `packages/` imports from `apps/`.** The one exception is
   `qwen-proxy`, which publishes a client through its `exports` map — that is a
   maintained contract, not an app internal.
-- **`apps/web` imports `@meetiq/core` type-only** and otherwise talks to
+- **`apps/web` imports `@meetai/core` type-only** and otherwise talks to
   `apps/api` over HTTP.
 - **`apps/proxy/` is public.** It mirrors out to
   [Sahil1337/qwen-proxy](https://github.com/Sahil1337/qwen-proxy) (MIT, forked
-  by others) via `bun run mirror:proxy`. Nothing MeetIQ-private goes in that
+  by others) via `bun run mirror:proxy`. Nothing meetAI-private goes in that
   directory — no prompts, no fixtures, no transcripts, no schema.
 - **`.env` per app, never one at the root.** The proxy runs on a different
   machine than the API; a shared env file would be a lie.

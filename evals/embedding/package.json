@@ -1,5 +1,5 @@
 {
-  "name": "@meetiq/evals-embedding",
+  "name": "@meetai/evals-embedding",
   "private": true,
   "type": "module",
   "description": "Scratch tests for the Google Gemini embeddings API",

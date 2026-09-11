@@ -53,7 +53,7 @@ Use Ollama's native `/api/chat`, not its `/v1` shim: native exposes `think`, `fo
 7. Always set `meetiq.tool_parse: 'native' | 'fallback' | 'forced' | 'none'`.
 
 ## Structured output
-`response_format.json_schema.schema` -> Ollama `format`. `json_object` -> `format:'json'`. Validate the returned content with ajv; retry once with errors appended; then 502 `structured_output_invalid`. Structured requests default to fast via router rule 2. Do not special-case any MeetIQ schema; the backend verifies evidence spans itself.
+`response_format.json_schema.schema` -> Ollama `format`. `json_object` -> `format:'json'`. Validate the returned content with ajv; retry once with errors appended; then 502 `structured_output_invalid`. Structured requests default to fast via router rule 2. Do not special-case any meetAI schema; the backend verifies evidence spans itself.
 
 ## Streaming
 `stream:true` -> SSE in OpenAI chunk format, ending with `data: [DONE]`. Thinking tokens stream as `delta.reasoning_content`, answer tokens as `delta.content`. When `tools` are present, buffer the full upstream response, run the parser, then emit one content/tool_calls chunk plus a finish chunk. Document this limitation in the README.
@@ -98,7 +98,7 @@ Parser: single call; two calls; prose before and after; missing closing tag at E
 `npm run dev`, `npm run build && npm start`, a systemd unit example, and curl examples for: fast extraction with json_schema; a thinking question; an adaptive "why" question showing the `x-meetiq-mode` header; a tool-call round trip including sending the `tool` result back; a streaming request. Plus the note: bind Ollama to 127.0.0.1 and expose only this proxy on the LAN.
 
 ## Non-goals
-No embeddings, no per-request model switching, no persistence, no multi-tenant auth, no MeetIQ prompt templates (the backend owns those).
+No embeddings, no per-request model switching, no persistence, no multi-tenant auth, no meetAI prompt templates (the backend owns those).
 
 ## Deliverable
 Working repo, `npm test` green, `npm run dev` serving on :8000, README as above.

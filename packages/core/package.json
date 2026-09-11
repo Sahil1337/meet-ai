@@ -1,5 +1,5 @@
 {
-  "name": "@meetiq/core",
+  "name": "@meetai/core",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
-    "@meetiq/tsconfig": "workspace:*",
+    "@meetai/tsconfig": "workspace:*",
     "typescript": "^5"
   }
 }

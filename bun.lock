@@ -30,60 +30,60 @@
       },
     },
     "evals/embedding": {
-      "name": "@meetiq/evals-embedding",
+      "name": "@meetai/evals-embedding",
       "devDependencies": {
         "@types/node": "^22.15.3",
         "typescript": "^5.9.2",
       },
     },
     "evals/propositions": {
-      "name": "@meetiq/evals-propositions",
+      "name": "@meetai/evals-propositions",
       "version": "0.0.0",
       "dependencies": {
-        "@meetiq/ai": "workspace:*",
-        "@meetiq/core": "workspace:*",
+        "@meetai/ai": "workspace:*",
+        "@meetai/core": "workspace:*",
         "qwen-proxy": "workspace:*",
       },
       "devDependencies": {
-        "@meetiq/tsconfig": "workspace:*",
+        "@meetai/tsconfig": "workspace:*",
         "typescript": "^5",
       },
     },
     "packages/ai": {
-      "name": "@meetiq/ai",
+      "name": "@meetai/ai",
       "version": "0.0.0",
       "dependencies": {
-        "@meetiq/core": "workspace:*",
+        "@meetai/core": "workspace:*",
         "qwen-proxy": "workspace:*",
       },
       "devDependencies": {
-        "@meetiq/tsconfig": "workspace:*",
+        "@meetai/tsconfig": "workspace:*",
         "typescript": "^5",
       },
     },
     "packages/core": {
-      "name": "@meetiq/core",
+      "name": "@meetai/core",
       "version": "0.0.0",
       "devDependencies": {
-        "@meetiq/tsconfig": "workspace:*",
+        "@meetai/tsconfig": "workspace:*",
         "typescript": "^5",
       },
     },
     "packages/tsconfig": {
-      "name": "@meetiq/tsconfig",
+      "name": "@meetai/tsconfig",
       "version": "0.0.0",
     },
   },
   "packages": {
-    "@meetiq/ai": ["@meetiq/ai@workspace:packages/ai"],
+    "@meetai/ai": ["@meetai/ai@workspace:packages/ai"],
 
-    "@meetiq/core": ["@meetiq/core@workspace:packages/core"],
+    "@meetai/core": ["@meetai/core@workspace:packages/core"],
 
-    "@meetiq/evals-embedding": ["@meetiq/evals-embedding@workspace:evals/embedding"],
+    "@meetai/evals-embedding": ["@meetai/evals-embedding@workspace:evals/embedding"],
 
-    "@meetiq/evals-propositions": ["@meetiq/evals-propositions@workspace:evals/propositions"],
+    "@meetai/evals-propositions": ["@meetai/evals-propositions@workspace:evals/propositions"],
 
-    "@meetiq/tsconfig": ["@meetiq/tsconfig@workspace:packages/tsconfig"],
+    "@meetai/tsconfig": ["@meetai/tsconfig@workspace:packages/tsconfig"],
 
     "@pinojs/redact": ["@pinojs/redact@0.4.0", "", {}, "sha512-k2ENnmBugE/rzQfEcdWHcCY+/FM3VLzH9cYEsbdsoqrvzAKRhUZeRNhAZvB8OitQJ1TBed3yqWtdjzS6wJKBwg=="],
 

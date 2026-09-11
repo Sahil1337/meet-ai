@@ -1,4 +1,4 @@
 {
-  "extends": "@meetiq/tsconfig/base.json",
+  "extends": "@meetai/tsconfig/base.json",
   "include": ["src"]
 }

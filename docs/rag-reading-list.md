@@ -1,4 +1,4 @@
-# MeetIQ — RAG Reading List
+# meetAI — RAG Reading List
 
 Two questions only: **how to embed chunks well** and **how to retrieve well**. Read in order within each section.
 

@@ -1,14 +1,14 @@
 /**
  * Types for the evaluation harness: a transcript fixture, the harness config,
  * and one run's outcome. The proposition shape itself is domain, not harness,
- * and lives in `@meetiq/core`; it is re-exported here for convenience.
+ * and lives in `@meetai/core`; it is re-exported here for convenience.
  */
 
-import type { Proposition } from "@meetiq/core";
+import type { Proposition } from "@meetai/core";
 import type { QwenProxyClient } from "qwen-proxy/client";
 import type { Mode, ToolChoice } from "qwen-proxy/types";
 
-export type { Proposition } from "@meetiq/core";
+export type { Proposition } from "@meetai/core";
 
 export type Fixture = {
   name: string;

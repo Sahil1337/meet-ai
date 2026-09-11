@@ -11,5 +11,5 @@ Quick reminders:
 - `apps/proxy/` is a public mirror. It has its own `AGENTS.md` and its own
   house style (single quotes, 120 columns, NodeNext `.js` specifiers) — follow
   those inside that directory, and the root style outside it.
-- Never put MeetIQ prompts, fixtures, or transcripts under `apps/proxy/`.
+- Never put meetAI prompts, fixtures, or transcripts under `apps/proxy/`.
 - Domain types go in `packages/core`, not wherever they were first needed.

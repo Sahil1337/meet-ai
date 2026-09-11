@@ -7,7 +7,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { QwenProxyClient, QwenProxyError } from "qwen-proxy/client";
-import { extractPropositions } from "@meetiq/ai";
+import { extractPropositions } from "@meetai/ai";
 import type { ChatCompletion } from "qwen-proxy/types";
 import type { EvalConfig, Fixture, Outcome, Proposition } from "./types.ts";
 
