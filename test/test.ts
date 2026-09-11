@@ -17,6 +17,9 @@ const TOOL_CHOICE: "required" | "auto" = "auto";
 // fixture — no system prompt/schema dump, no live streaming, no tool-call
 // trace, no raw response, no META/CHECKS. See EvalConfig.suppress.
 const SUPPRESS = true;
+// Write out/latest/transcript.txt + claims.json at the end of the run, for
+// handing off to an agent to review. See EvalConfig.saveOutput.
+const SAVE_OUTPUT = true;
 
 // The MeetIQ kickoff meeting (Monday 2026-09-07): settling what we embed, how
 // we embed it, which database, which stack, and who owns what. One continuous
@@ -189,4 +192,5 @@ await runEvaluation({
   manual: MANUAL,
   debug: DEBUG,
   suppress: SUPPRESS,
+  saveOutput: SAVE_OUTPUT,
 });

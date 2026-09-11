@@ -3,6 +3,8 @@
  * verdict loop and the summary table. Nothing prompt-related lives here.
  */
 
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { QwenProxyClient, QwenProxyError } from "../src/client.ts";
 import { extractPropositions } from "../src/extraction-agent.ts";
@@ -251,6 +253,7 @@ function failOutcome(
     error,
     ms,
     verdict: "-",
+    propositions: [],
   };
 }
 
@@ -336,6 +339,7 @@ function finishOutcome(
     warnings,
     ms,
     verdict: "-",
+    propositions,
   };
 }
 
@@ -440,6 +444,42 @@ async function runOne(
   }
 }
 
+// Dumping the run to disk, for handing off to an agent to review
+
+/**
+ * Writes the run's transcripts and extracted claims to out/latest/ (gitignored
+ * — see .gitignore's `out` entry), overwriting whatever was there before.
+ * transcript.txt is the raw dialogue, one `=== fixture name ===` section per
+ * fixture, for a quick read-through. claims.json is the structured,
+ * self-contained version an agent can load programmatically: one entry per
+ * fixture with its own transcript, status, warnings, and propositions
+ * together, so a claim never needs to be cross-referenced against a separate
+ * file to know what it came from.
+ */
+function saveRunOutput(cfg: EvalConfig, outcomes: Outcome[]): string {
+  const outDir = join(import.meta.dir, "..", "out", "latest");
+  mkdirSync(outDir, { recursive: true });
+
+  const runs = outcomes.map((o, i) => ({
+    fixture: o.name,
+    status: o.status,
+    verdict: o.verdict,
+    transcript: cfg.fixtures[i]?.transcript ?? "",
+    propositions: o.propositions,
+    warnings: o.warnings,
+    ...(o.error ? { error: o.error } : {}),
+    ms: o.ms,
+  }));
+
+  const transcriptText = runs
+    .map((r) => `=== ${r.fixture} ===\n${r.transcript}`)
+    .join("\n\n");
+  writeFileSync(join(outDir, "transcript.txt"), `${transcriptText}\n`);
+  writeFileSync(join(outDir, "claims.json"), `${JSON.stringify(runs, null, 2)}\n`);
+
+  return outDir;
+}
+
 // Whole run: header, health, manual loop, summary, exit code
 
 export async function runEvaluation(cfg: EvalConfig): Promise<never> {
@@ -505,6 +545,11 @@ export async function runEvaluation(cfg: EvalConfig): Promise<never> {
       } else done = true;
     }
     if (i < cfg.fixtures.length) outcomes.push(outcome);
+    // Rewritten from the full `outcomes` array every fixture, not appended —
+    // cheap (a few KB to write), and means out/latest/ is always a complete,
+    // valid snapshot of everything processed so far. So a crash or Ctrl+C
+    // mid-run loses at most the fixture in flight, not the whole run.
+    if (cfg.saveOutput ?? true) saveRunOutput(cfg, outcomes);
   }
   rl?.close();
 
@@ -529,5 +574,11 @@ export async function runEvaluation(cfg: EvalConfig): Promise<never> {
   console.log(
     `\n${outcomes.length - failed.length}/${outcomes.length} ok${failed.length ? `, ${failed.length} failed` : ""}`,
   );
+
+  if (cfg.saveOutput ?? true) {
+    const outDir = saveRunOutput(cfg, outcomes);
+    console.log(dim(`\nsaved transcript.txt + claims.json to ${outDir}`));
+  }
+
   process.exit(failed.length ? 1 : 0);
 }

@@ -61,6 +61,12 @@ export type EvalConfig = {
    * per-fixture printing is cut down. Errors still print regardless.
    */
   suppress?: boolean;
+  /**
+   * Write transcript.txt + claims.json to out/latest/ at the end of the run
+   * (see saveRunOutput() in test-helpers.ts), for handing off to an agent to
+   * review. Default true.
+   */
+  saveOutput?: boolean;
   wrapWidth?: number;
 };
 
@@ -73,4 +79,6 @@ export type Outcome = {
   error?: string;
   ms: number;
   verdict: string;
+  /** The propositions themselves, so runEvaluation() can dump transcript+claims to disk after the run. */
+  propositions: Proposition[];
 };
