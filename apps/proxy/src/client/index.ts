@@ -7,9 +7,12 @@
  *   const qwen = new QwenProxyClient({ baseUrl: 'http://proxy-host:8000', apiKey: '...' });
  *
  * It speaks the OpenAI chat-completions shape plus the proxy's extensions
- * (`mode`, `debug`, `meetiq`, `reasoning_content`) and adds two helpers that
- * cover the common workloads: `extract()` for schema-validated JSON and
- * `runTools()` for a tool-calling loop.
+ * (`mode`, `debug`, `meetiq`, `reasoning_content`) and adds four helpers that
+ * cover the common workloads: `extract()`/`extractStream()` for schema-validated
+ * JSON, `runTools()` for a tool-calling loop that ends in plain text, and
+ * `runToolsUntil()` for a loop that ends by calling a designated "final" tool
+ * (for when the answer itself must be schema-shaped but the model also needs
+ * other tools along the way — response_format can't be combined with tools).
  */
 
 import type {
@@ -18,10 +21,14 @@ import type {
   ChatMessage,
   ChatRequest,
   ErrorEnvelope,
+  FinishReason,
   Health,
+  ProxyMeta,
   RouteDecision,
   Tool,
   ToolCall,
+  ToolChoice,
+  Usage,
 } from '../shared/types.js';
 
 export type * from '../shared/types.js';
@@ -53,10 +60,6 @@ export interface ClientOptions {
   requestId?: (() => string) | undefined;
 }
 
-// ---------------------------------------------------------------------------
-// Client
-// ---------------------------------------------------------------------------
-
 export class QwenProxyClient {
   private readonly baseUrl: string;
   private readonly apiKey: string | undefined;
@@ -72,7 +75,6 @@ export class QwenProxyClient {
     this.requestId = options.requestId;
   }
 
-  /** One chat completion. */
   async chat(request: ChatRequest, signal?: AbortSignal): Promise<ChatCompletion> {
     const res = await this.send('/v1/chat/completions', { model: this.model, ...request, stream: false }, signal);
     return (await res.json()) as ChatCompletion;
@@ -106,9 +108,7 @@ export class QwenProxyClient {
     return (await res.json()) as Health;
   }
 
-  // ------------------------------------------------------------------------
   // Helpers for the two common workloads
-  // ------------------------------------------------------------------------
 
   /**
    * Schema-validated JSON extraction. The proxy constrains decoding to the
@@ -123,10 +123,191 @@ export class QwenProxyClient {
       temperature: 0,
       ...options,
       messages,
-      response_format: { type: 'json_schema', json_schema: { name: 'extraction', schema } },
+      response_format: {
+        type: 'json_schema',
+        json_schema: { name: 'extraction', schema },
+      },
     });
     const content = completion.choices[0]?.message.content ?? '';
     return { value: JSON.parse(content) as T, completion };
+  }
+
+  /**
+   * Same contract as `extract()`, over the streaming endpoint. `onChunk` fires
+   * for every SSE chunk as it arrives; the returned `completion` is assembled
+   * from the accumulated deltas plus the `usage`/`meetiq` carried on the final
+   * chunk, so it has the identical shape `extract()` returns.
+   */
+  async extractStream<T = unknown>(
+    messages: ChatMessage[],
+    schema: Record<string, unknown>,
+    options: Omit<ChatRequest, 'messages' | 'response_format' | 'stream'> = {},
+    onChunk?: (chunk: ChatChunk) => void,
+  ): Promise<{ value: T; completion: ChatCompletion }> {
+    const completion = await this.collectStream(
+      {
+        temperature: 0,
+        ...options,
+        messages,
+        response_format: {
+          type: 'json_schema',
+          json_schema: { name: 'extraction', schema },
+        },
+      },
+      onChunk,
+    );
+    const content = completion.choices[0]?.message.content ?? '';
+    return { value: JSON.parse(content) as T, completion };
+  }
+
+  /**
+   * Runs the streaming endpoint to completion and assembles a `ChatCompletion`
+   * from the accumulated deltas plus the `usage`/`meetiq` carried on the final
+   * chunk — the shape `chat()` returns, so callers don't need to branch on
+   * whether a request streamed. `request.stream` is ignored; `stream()` always
+   * sets it. Per the proxy, `tool_calls` arrive as a single complete delta, so
+   * the last one seen is taken as-is rather than merged fragment by fragment.
+   */
+  private async collectStream(
+    request: ChatRequest,
+    onChunk?: (chunk: ChatChunk) => void,
+    signal?: AbortSignal,
+  ): Promise<ChatCompletion> {
+    let id = '';
+    let created = 0;
+    let model = '';
+    let content = '';
+    let reasoning = '';
+    let tool_calls: ToolCall[] | undefined;
+    let finish_reason: FinishReason = 'stop';
+    let usage: Usage | undefined;
+    let meetiq: ProxyMeta | undefined;
+
+    for await (const chunk of this.stream(request, signal)) {
+      onChunk?.(chunk);
+      id = chunk.id;
+      created = chunk.created;
+      model = chunk.model;
+      const choice = chunk.choices[0];
+      if (choice?.delta.content) content += choice.delta.content;
+      if (choice?.delta.reasoning_content) reasoning += choice.delta.reasoning_content;
+      if (choice?.delta.tool_calls) {
+        tool_calls = choice.delta.tool_calls.map(({ index, ...call }) => call);
+      }
+      if (choice?.finish_reason) finish_reason = choice.finish_reason;
+      if (chunk.usage) usage = chunk.usage;
+      if (chunk.meetiq) meetiq = chunk.meetiq;
+    }
+
+    if (!usage || !meetiq) {
+      throw new QwenProxyError(502, 'incomplete_stream', 'Stream ended without usage/meetiq on the final chunk');
+    }
+
+    return {
+      id,
+      object: 'chat.completion',
+      created,
+      model,
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: 'assistant',
+            content: content || null,
+            ...(reasoning ? { reasoning_content: reasoning } : {}),
+            ...(tool_calls ? { tool_calls } : {}),
+          },
+          finish_reason,
+          logprobs: null,
+        },
+      ],
+      usage,
+      meetiq,
+    };
+  }
+
+  /**
+   * Agent loop for when the final answer must itself be schema-constrained
+   * *and* the model needs other tools along the way — `response_format`
+   * can't be combined with `tools` on this proxy, so the answer's schema is
+   * modeled as one more tool instead of a separate constrained-decoding call.
+   * Loops until the model calls `finalTool`; every other call is run through
+   * `handlers` and its result appended before the next turn. `finalTool`'s
+   * arguments (parsed as JSON, never passed to `handlers`) are the return
+   * value.
+   *
+   * `toolChoice` defaults to `'required'`, which forces a grammar-constrained
+   * (guaranteed-valid-JSON) tool call every turn, but the proxy also forces
+   * `think:false` on that path regardless of the requested mode — thinking
+   * never runs. `'auto'` lets the requested mode's reasoning actually happen,
+   * at the cost of tool-call parsing falling back to text extraction instead
+   * of a grammar guarantee, and the model may reply without calling any tool.
+   */
+  async runToolsUntil<T = unknown>(
+    messages: ChatMessage[],
+    tools: Tool[],
+    finalTool: string,
+    handlers: Record<string, (args: Record<string, unknown>, call: ToolCall) => Promise<unknown> | unknown>,
+    options: Omit<ChatRequest, 'messages' | 'tools' | 'tool_choice' | 'stream'> & {
+      maxHops?: number;
+      stream?: boolean;
+      toolChoice?: ToolChoice;
+      onChunk?: (chunk: ChatChunk) => void;
+      onToolCall?: (call: ToolCall, result: unknown) => void;
+    } = {},
+  ): Promise<{
+    value: T;
+    completion: ChatCompletion;
+    messages: ChatMessage[];
+    hops: number;
+  }> {
+    const { maxHops = 8, stream, toolChoice = 'required', onChunk, onToolCall, ...chatOptions } = options;
+    const transcript = [...messages];
+
+    for (let hops = 1; ; hops++) {
+      if (hops > maxHops) {
+        throw new QwenProxyError(500, 'max_hops_exceeded', `"${finalTool}" was not called within ${maxHops} hops`);
+      }
+
+      const request: ChatRequest = {
+        ...chatOptions,
+        messages: transcript,
+        tools,
+        tool_choice: toolChoice,
+      };
+      const completion = stream ? await this.collectStream(request, onChunk) : await this.chat(request);
+
+      const choice = completion.choices[0]!;
+      const calls = choice.message.tool_calls ?? [];
+      if (choice.finish_reason !== 'tool_calls' || calls.length === 0) {
+        throw new QwenProxyError(
+          502,
+          'no_tool_call',
+          `Expected a tool call (tool_choice: ${JSON.stringify(toolChoice)}) but got finish_reason "${choice.finish_reason}" with no tool calls`,
+        );
+      }
+      transcript.push({
+        role: 'assistant',
+        content: choice.message.content,
+        tool_calls: calls,
+      });
+
+      for (const call of calls) {
+        if (call.function.name === finalTool) {
+          const value = JSON.parse(call.function.arguments) as T;
+          return { value, completion, messages: transcript, hops };
+        }
+        const handler = handlers[call.function.name];
+        const args = JSON.parse(call.function.arguments) as Record<string, unknown>;
+        const result = handler ? await handler(args, call) : { error: `no handler for tool "${call.function.name}"` };
+        onToolCall?.(call, result);
+        transcript.push({
+          role: 'tool',
+          tool_call_id: call.id,
+          content: typeof result === 'string' ? result : JSON.stringify(result),
+        });
+      }
+    }
   }
 
   /**
@@ -143,19 +324,31 @@ export class QwenProxyClient {
       maxHops?: number;
       onToolCall?: (call: ToolCall, result: unknown) => void;
     } = {},
-  ): Promise<{ completion: ChatCompletion; messages: ChatMessage[]; hops: number }> {
+  ): Promise<{
+    completion: ChatCompletion;
+    messages: ChatMessage[];
+    hops: number;
+  }> {
     const { maxHops = 5, onToolCall, ...chatOptions } = options;
     const transcript = [...messages];
     let hops = 0;
     for (;;) {
-      const completion = await this.chat({ ...chatOptions, messages: transcript, tools });
+      const completion = await this.chat({
+        ...chatOptions,
+        messages: transcript,
+        tools,
+      });
       const choice = completion.choices[0]!;
       const calls = choice.message.tool_calls ?? [];
       if (choice.finish_reason !== 'tool_calls' || calls.length === 0 || hops >= maxHops) {
         return { completion, messages: transcript, hops };
       }
       hops++;
-      transcript.push({ role: 'assistant', content: choice.message.content, tool_calls: calls });
+      transcript.push({
+        role: 'assistant',
+        content: choice.message.content,
+        tool_calls: calls,
+      });
       for (const call of calls) {
         const handler = handlers[call.function.name];
         const args = JSON.parse(call.function.arguments) as Record<string, unknown>;
@@ -170,11 +363,11 @@ export class QwenProxyClient {
     }
   }
 
-  // ------------------------------------------------------------------------
-
   private async send(path: string, body: unknown, signal?: AbortSignal, method = 'POST'): Promise<Response> {
     const timeout = AbortSignal.timeout(this.timeoutMs);
-    const headers: Record<string, string> = { 'content-type': 'application/json' };
+    const headers: Record<string, string> = {
+      'content-type': 'application/json',
+    };
     if (this.apiKey) headers['authorization'] = `Bearer ${this.apiKey}`;
     if (this.requestId) headers['x-request-id'] = this.requestId();
 
@@ -216,7 +409,13 @@ export class QwenProxyClient {
 }
 
 /** Splits an SSE body into the `data:` payloads, stopping at `[DONE]`. */
-async function* sseData(body: ReadableStream<Uint8Array>): AsyncGenerator<string, void, undefined> {
+async function* sseData(
+  // Whatever `fetch` hands back, after the caller's null check — naming the
+  // concrete ReadableStream<Uint8Array> instead makes this fail to typecheck
+  // under Bun's lib, where `Response['body']` is ReadableStream<any> and the
+  // stream type is invariant in its chunk parameter.
+  body: NonNullable<Response['body']>,
+): AsyncGenerator<string, void, undefined> {
   const decoder = new TextDecoder();
   let buffer = '';
   for await (const chunk of body as unknown as AsyncIterable<Uint8Array>) {

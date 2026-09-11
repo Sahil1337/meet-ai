@@ -1,10 +1,20 @@
 {
   "name": "meetiq",
   "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "evals/*"
+  ],
   "scripts": {
-    "test": "bun test/test.ts",
-    "test:stream-tools": "bun test/stream-tools.ts"
+    "dev:proxy": "bun run --filter qwen-proxy dev",
+    "dev:api": "bun run --filter @meetiq/api dev",
+    "dev:web": "bun run --filter @meetiq/web dev",
+    "eval": "bun run --filter @meetiq/evals-propositions eval",
+    "typecheck": "bun run --filter '*' typecheck",
+    "mirror:proxy": "git subtree push --prefix apps/proxy qwen-proxy main"
   },
+  "packageManager": "bun@1.1.38",
   "devDependencies": {
     "@types/bun": "latest"
   },

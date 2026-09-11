@@ -9,9 +9,9 @@
  */
 
 import { INVESTIGATE_AMBIGUITY_TOOL, investigateAmbiguityHandler } from "./ambiguity-tool.ts";
-import type { QwenProxyClient } from "./client.ts";
+import type { QwenProxyClient } from "qwen-proxy/client";
 import { RESOLVE_DATE_TOOL, resolveDateHandler } from "./date-tool.ts";
-import type { ChatChunk, ChatCompletion, ChatMessage, Mode, Tool, ToolCall, ToolChoice } from "./shared/types.ts";
+import type { ChatChunk, ChatCompletion, ChatMessage, Mode, Tool, ToolCall, ToolChoice } from "qwen-proxy/types";
 
 export const SUBMIT_PROPOSITIONS_TOOL_NAME = "submit_propositions";
 

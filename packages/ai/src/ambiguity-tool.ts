@@ -46,8 +46,8 @@
  * conversation that never grows by raw retrieved transcript at all.
  */
 
-import type { QwenProxyClient } from "./client.ts";
-import type { ChatMessage, Mode, Tool } from "./shared/types.ts";
+import type { QwenProxyClient } from "qwen-proxy/client";
+import type { ChatMessage, Mode, Tool } from "qwen-proxy/types";
 
 const MINUTE = 60_000;
 

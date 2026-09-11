@@ -1,0 +1,21 @@
+{
+  "name": "@meetiq/ai",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./prompts": "./src/prompts.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@meetiq/core": "workspace:*",
+    "qwen-proxy": "workspace:*"
+  },
+  "devDependencies": {
+    "@meetiq/tsconfig": "workspace:*",
+    "typescript": "^5"
+  }
+}

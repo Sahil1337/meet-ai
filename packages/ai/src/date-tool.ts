@@ -8,7 +8,7 @@
  * system prompt (test/prompts.ts).
  */
 
-import type { Tool } from "./shared/types.ts";
+import type { Tool } from "qwen-proxy/types";
 
 const DAY = 86_400_000;
 const NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;

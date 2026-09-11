@@ -1,19 +1,14 @@
 /**
- * Shared types for the evaluation harness: the proposition shape the model
- * returns, a transcript fixture, the harness config, and one run's outcome.
+ * Types for the evaluation harness: a transcript fixture, the harness config,
+ * and one run's outcome. The proposition shape itself is domain, not harness,
+ * and lives in `@meetiq/core`; it is re-exported here for convenience.
  */
 
-import type { QwenProxyClient } from "../src/client.ts";
-import type { Mode, ToolChoice } from "../src/shared/types.ts";
+import type { Proposition } from "@meetiq/core";
+import type { QwenProxyClient } from "qwen-proxy/client";
+import type { Mode, ToolChoice } from "qwen-proxy/types";
 
-export type Proposition = {
-  text: string;
-  type: string;
-  speaker: string | null;
-  confidence: number;
-  /** Optional: exact transcript span. When present it is checked verbatim. */
-  evidence?: string;
-};
+export type { Proposition } from "@meetiq/core";
 
 export type Fixture = {
   name: string;

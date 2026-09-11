@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
-import { QwenProxyClient } from "../src/client.ts";
-import { AGENT_PROMPT, PROPOSITIONS_SCHEMA, TYPES } from "./prompts.ts";
+import { QwenProxyClient } from "qwen-proxy/client";
+import { AGENT_PROMPT, PROPOSITIONS_SCHEMA, TYPES } from "@meetiq/ai/prompts";
 import { fixturesFromMeeting, runEvaluation } from "./test-helpers.ts";
 import type { Fixture } from "./types.ts";
 

@@ -6,9 +6,9 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
-import { QwenProxyClient, QwenProxyError } from "../src/client.ts";
-import { extractPropositions } from "../src/extraction-agent.ts";
-import type { ChatCompletion } from "../src/shared/types.ts";
+import { QwenProxyClient, QwenProxyError } from "qwen-proxy/client";
+import { extractPropositions } from "@meetiq/ai";
+import type { ChatCompletion } from "qwen-proxy/types";
 import type { EvalConfig, Fixture, Outcome, Proposition } from "./types.ts";
 
 const tty = process.stdout.isTTY ?? false;

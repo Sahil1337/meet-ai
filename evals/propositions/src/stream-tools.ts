@@ -1,5 +1,5 @@
-import { QwenProxyClient } from "../src/client.ts";
-import type { ChatMessage, Tool } from "../src/shared/types.ts";
+import { QwenProxyClient } from "qwen-proxy/client";
+import type { ChatMessage, Tool } from "qwen-proxy/types";
 import { bold, dim, green, json, red, yellow } from "./test-helpers.ts";
 
 const BASE_URL = "https://ai.sahil1337.com";

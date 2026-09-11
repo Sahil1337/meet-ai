@@ -1,0 +1,21 @@
+{
+  "name": "@meetiq/evals-propositions",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "eval": "bun src/test.ts",
+    "eval:stream-tools": "bun src/stream-tools.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@meetiq/ai": "workspace:*",
+    "@meetiq/core": "workspace:*",
+    "qwen-proxy": "workspace:*"
+  },
+  "devDependencies": {
+    "@meetiq/tsconfig": "workspace:*",
+    "typescript": "^5"
+  },
+  "description": "Eval harness for proposition extraction: fixtures, per-fixture checks, manual verdict loop"
+}
