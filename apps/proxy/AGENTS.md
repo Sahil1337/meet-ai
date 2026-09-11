@@ -1,0 +1,135 @@
+# AGENTS.md
+
+Guidance for AI coding agents (and humans) working on `qwen-proxy`.
+`CLAUDE.md` points here; keep this file the single source of truth.
+
+## What this project is
+
+A minimal, single-process, OpenAI-compatible HTTP proxy in front of a local
+Ollama instance serving Qwen3.5-4B. It exists so that any OpenAI SDK client
+gets three things the raw model does not reliably give:
+
+1. **Adaptive thinking** — per-request choice between `think:false` and
+   `think:true`, decided by the router.
+2. **Tool calls that always validate** — native Ollama tool calls when
+   available, a `<tool_call>` parser as fallback, constrained
+   decoding when the caller forces a tool, and ajv validation of arguments
+   with one retry. Never a silently wrong call.
+3. **Structured output that always validates** — `response_format` mapped to
+   Ollama's `format`, validated with ajv, one retry, then a 502.
+
+The proxy also boots and supervises `ollama serve` itself so the inference
+tuning (context length, KV cache type, flash attention, parallelism, GPU
+layers) lives in this repo's `.env`, not in a system service.
+
+## Non-goals
+
+No embeddings, no per-request model switching, no persistence, no
+multi-tenant auth, no application prompt templates. Callers own their prompts.
+
+## Layout
+
+Three trees with one-way dependencies. `shared` has no runtime code; `client`
+and `server` both import it; neither imports the other.
+
+```
+src/
+  shared/types.ts     the wire contract: OpenAI chat-completions shapes + proxy
+                      extensions (mode, debug, meetiq, reasoning_content)
+  client/index.ts     dependency-free HTTP client for other services
+                      (chat, stream, route, inspect, health, extract, runTools)
+  server/
+    index.ts          bootstrap: load config, start Ollama, listen, handle signals
+    app.ts            createApp(deps) -> Express app; the only place routes are wired
+    config.ts         validated env -> Config
+    middleware.ts     request id, bearer auth, error envelope
+    routes/           thin HTTP handlers; no business logic
+    core/
+      ollama.ts       native /api/chat client (stream + non-stream) + error mapping
+      supervisor.ts   spawn/wait/restart/stop the managed `ollama serve`
+      keepawake.ts    periodic one-token touch so a laptop GPU never runtime-suspends
+      mapping.ts      request validation (zod) and response builders, typed
+                      against shared/types.ts
+      router.ts       adaptive fast/thinking decision (rules 1-6)
+      thinking.ts     <think> splitting, one model "turn"
+      tools.ts        schema slimming, <tool_call> parser, JSON repair, ajv
+      structured.ts   response_format -> format, output validation
+      completion.ts   orchestration of one chat completion (retries, meta)
+      stream.ts       SSE writer in OpenAI chunk format
+      queue.ts        bounded concurrency with a wait timeout
+      errors.ts       ProxyError -> OpenAI error envelope
+    util/             tokens (chars/4 estimate), ids, logger, json (lenient
+                      parse/repair, isRecord, errorMessage)
+examples/             one runnable script per use case, built on the client
+```
+
+The contract is enforced at compile time: `buildCompletion`/`buildChunk`
+return the shared response types, and `RequestContract` in `mapping.ts` fails
+to compile if the shared `ChatRequest` stops being accepted by the validator.
+Change the wire format in `shared/types.ts` first; the compiler then points at
+what the server and client must adjust.
+
+## Conventions
+
+- TypeScript strict, ESM, [Bun](https://bun.sh) 1.1+. Relative imports end in `.js`.
+- Under ten runtime dependencies. Add one only if it replaces >100 lines.
+- Routes do HTTP only: parse, call `core/`, write. Logic lives in `core/`.
+- Every upstream call goes through `OllamaClient` so the upstream can be swapped or faked.
+- Errors are thrown as `ProxyError(status, code, message)` and rendered by
+  the error middleware. Never `res.status(...).json(...)` an error by hand.
+- Proxy-specific response fields live under `meetiq` and the `x-meetiq-*`
+  headers. Do not add non-OpenAI fields anywhere else.
+- Log one pino event per request from the chat route (`chat.completion` at
+  info, `model.io` at debug with prompt/reasoning/tool calls/answer). The
+  pretty renderer in `util/logger.ts` is for humans; JSON is the contract.
+  Do not scatter
+  `log.info` through the pipeline. `debug` is fine anywhere.
+- Prefer small pure functions over classes with state. Long-lived
+  state lives only in the queue, the Ollama client and the supervisor; the
+  per-request classes (`ThinkSplitter`, `SseWriter`) hold no state beyond one
+  request.
+
+## Checking changes
+
+```
+bun run typecheck                 # strict TypeScript
+bun examples/<name>.ts            # against a running proxy (bun run dev)
+```
+
+There is no unit-test suite. Verify behaviour with the scripts in
+`examples/` (one per use case), `POST /v1/inspect` (exact upstream payload)
+or `debug: true` on a request. `test.ts` in the repo root is gitignored for
+personal experiments.
+
+## Changing behaviour safely
+
+- Ollama parses tool calls itself when a request carries `tools`, so the
+  `<tool_call>` parser only runs when it returns none. It reads two dialects:
+  Qwen XML (`<function=name><parameter=key>`, what Qwen3.5's own template
+  emits) and Hermes JSON. Do not add a third without checking real model
+  output for it.
+- Tool definitions always reach the model when the caller sent tools, forced
+  choice included. `tool_choice` says whether a call is required; `tools` says
+  what the tools mean, exactly as OpenAI and Anthropic separate them. Hiding
+  them under a forced choice measurably hurts: with two tools and no
+  descriptions the model picked the right one 1 of 4 times, and 4 of 4 with
+  them. The grammar is the hard constraint, the definitions are the semantics.
+- `tools` + `response_format` compile into one `oneOf` grammar, so a turn can
+  call a tool or answer in the caller's schema. Without it the response schema
+  is the only grammar and the model, unable to call anything, fabricates an
+  answer that fits the schema. Where the call lands depends on `think`:
+  `think:true` has Ollama extract it into `tool_calls` (`tool_parse: "native"`),
+  `think:false` leaves it in `content` as grammar JSON (`tool_parse: "union"`,
+  handled by `parseUnionOutput`, which reads it as a call only when `name` is a
+  declared tool and `arguments` is an object). Both paths are live — tools route
+  to thinking by default, so `native` is the common one. Grammar-constrained
+  decoding does not block thinking; only forced `tool_choice` pins the mode to
+  fast, and that is policy, not a limitation.
+- Never hand-render assistant `tool_calls` into prompt text. Pass them
+  through structurally so the model's chat template renders the dialect it
+  was trained on; the two drifted apart once already.
+- `NUM_GPU`, `NUM_CTX` and the KV cache type must be identical in every
+  request, including the router's classifier call, or Ollama reloads the
+  model. Set them in one place (`mapping.ts: baseOptions`).
+- The router rules are ordered and first-match. Keep the order in
+  `router.ts` identical to the README table.
