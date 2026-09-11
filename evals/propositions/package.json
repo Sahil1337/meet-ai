@@ -3,19 +3,19 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "description": "Eval harness for proposition extraction: fixtures, per-window checks, manual verdict loop",
   "scripts": {
-    "eval": "bun src/test.ts",
-    "eval:stream-tools": "bun src/stream-tools.ts",
+    "eval": "bun src/run.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@meetai/ai": "workspace:*",
     "@meetai/core": "workspace:*",
+    "@meetai/ingestion": "workspace:*",
     "qwen-proxy": "workspace:*"
   },
   "devDependencies": {
     "@meetai/tsconfig": "workspace:*",
     "typescript": "^5"
-  },
-  "description": "Eval harness for proposition extraction: fixtures, per-fixture checks, manual verdict loop"
+  }
 }
