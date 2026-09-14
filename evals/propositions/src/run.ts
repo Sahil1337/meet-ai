@@ -11,7 +11,7 @@
 import { readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { EXTRACTION_PROMPT } from "@meetai/ai/prompts";
-import { QwenProxyClient } from "qwen-proxy/client";
+import { QwenProxyClient } from "@meetai/proxy/client";
 import { loadEvalEnv } from "./env.ts";
 import { fixturesFromTranscript } from "./fixtures.ts";
 import { runEvaluation } from "./runner.ts";

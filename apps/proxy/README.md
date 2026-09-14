@@ -245,10 +245,10 @@ Always the OpenAI envelope:
 
 ## Client
 
-[`src/client/index.ts`](src/client/index.ts) is a dependency-free client to import from another service. It shares only the wire types in [`src/shared/types.ts`](src/shared/types.ts) with the server, so you can copy the two files or reference them as `qwen-proxy/client` and `qwen-proxy/types`.
+[`src/client/index.ts`](src/client/index.ts) is a dependency-free client to import from another service. It shares only the wire types in [`src/shared/types.ts`](src/shared/types.ts) with the server, so you can copy the two files or reference them as `@meetai/proxy/client` and `@meetai/proxy/types`.
 
 ```ts
-import { QwenProxyClient } from 'qwen-proxy/client';
+import { QwenProxyClient } from '@meetai/proxy/client';
 
 const qwen = new QwenProxyClient({ baseUrl: 'https://ai.example.com', apiKey: process.env.QWEN_API_KEY });
 

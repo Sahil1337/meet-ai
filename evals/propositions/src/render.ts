@@ -4,7 +4,7 @@
  */
 
 import { formatTranscript, type ExtractedProposition, type TranscriptWindow } from "@meetai/core";
-import type { ChatCompletion } from "qwen-proxy/types";
+import type { ChatCompletion } from "@meetai/proxy/types";
 import type { Outcome } from "./types.ts";
 
 export const WIDTH = 100;

@@ -24,7 +24,7 @@ first for the boundaries; this is the to-do list.
 | Day | Unit 1 | Unit 2 | Unit 3 | Unit 4 | Unit 5 |
 | --- | --- | --- | --- | --- | --- |
 | 1 | `loadConfig`, `.env.example` | run `bun run eval`, read the audit §10 | `InMemory*` stores | embedding service up | Vite scaffold, fake fixtures validated by core schemas |
-| 2–3 | `POST /meetings`, `GET /jobs/:id` against in-memory stores | resolver verification fix | `ProjectMemory.ingest` for commitments | in-process index + cosine | upload + meeting pages |
+| 2–3 | `POST /meetings`, `GET /jobs/:id` against in-memory stores | resolver verification fix | `ProjectMemory.ingest` for commitments | index + cosine | upload + meeting pages |
 | 4–5 | `processMeeting` end to end | evidence line indexes | `changes` + `commitments` queries | `HybridSearcher` + retrieval eval set | Q&A page with citations |
 
 By the end of week one the pipeline runs on `Map`s with real extraction,
@@ -160,22 +160,30 @@ reranker only after an eval set exists.
 **Contract to satisfy:** `Embedder`, `Indexer`, `Searcher` from core.
 Return ids and scores; never text.
 
+**Already there:** the index. `PropositionIndexer` / `HybridSearcher` run on
+Postgres + pgvector — BM25 + vector with RRF fusion, computed in SQL — on the
+server at `DATABASE_URL`, in development as well as production. The retrieval
+eval set exists too. What remains:
+
 **First tasks, in order:**
-1. **Embedding service + `HttpEmbedder`.** Pick one local model from the
+1. **The eval numbers.** The set — 17 queries over the kickoff transcript's
+   44 propositions, graded by expected substrings — is written, and the
+   Gemini embedder runs it today; nobody has run it with a key yet.
+   `EVAL_MODE=all` prints vector-only, keyword-only and hybrid side by side;
+   put the table in the README and tune `EVAL_MIN_SCORE` against the
+   out-of-domain queries. This is the number the kickoff said must exist
+   before the reranker question is reopened.
+2. **Embedding service + `HttpEmbedder`.** Pick one local model from the
    MTEB Retrieval column; expose `POST /embed { texts, kind }`; store the
    model name with every vector. Matched task types for documents vs.
-   queries (see the README's prior findings).
-2. **In-process index** behind `PropositionIndexer` / `HybridSearcher`:
-   array + cosine plus a trivial BM25, RRF fusion. Enough for
-   `POST /ask` to work end to end.
-3. **Retrieval eval set:** 20 questions over the kickoff transcript's
-   propositions with expected proposition ids. Precision@5 for
-   vector-only vs. hybrid. This is the set the kickoff said must exist
-   before the reranker question is reopened.
-4. **Query routing:** structured questions ("who owns X") → `SearchFilters`
+   queries (see the README's prior findings). The container still passes
+   `"unchosen"` as the model name; this is where that ends. Re-index and
+   re-run 1: vectors from two models are not comparable.
+3. **Query routing:** structured questions ("who owns X") → `SearchFilters`
    on `type`/`speaker`; semantic → hybrid. A small classification call is
    allowed; put its prompt in your package and keep it under ten lines.
-5. Then pgvector (or whatever unit 3 chose) behind the same interfaces.
+4. **Reranking**, only after the numbers from 1 say where hybrid falls
+   short.
 
 **Done looks like:** `searcher.search({ projectId, text: "why did we choose
 Postgres?" })` returns the pgvector-decision proposition in the top 3;

@@ -18,7 +18,7 @@
  */
 
 import { z } from "zod";
-import type { Tool } from "qwen-proxy/types";
+import type { Tool } from "@meetai/proxy/types";
 import type { ToolContext } from "./context.ts";
 
 export interface ToolDefinition<Params extends z.ZodObject = z.ZodObject, Result = unknown> {

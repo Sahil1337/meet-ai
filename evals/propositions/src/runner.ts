@@ -5,7 +5,7 @@
 
 import { createInterface } from "node:readline/promises";
 import { extractPropositions } from "@meetai/ai";
-import { QwenProxyError } from "qwen-proxy/client";
+import { QwenProxyError } from "@meetai/proxy/client";
 import { checkPropositions } from "./checks.ts";
 import { saveRunOutput } from "./output.ts";
 import {

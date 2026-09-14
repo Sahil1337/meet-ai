@@ -57,7 +57,7 @@ working — don't add one unless something genuinely needs it.
 - **`apps/web` imports `@meetai/core` type-only** and otherwise talks to
   `apps/api` over HTTP. It never calls the proxy.
 - **Nothing in `packages/` imports from `apps/`.** The one exception is
-  `qwen-proxy`, which publishes a client through its `exports` map — a
+  `@meetai/proxy`, which publishes a client through its `exports` map — a
   maintained contract, not an app internal.
 - **The transcript line grammar has one parser**: `parseTranscript` in
   `@meetai/core`. It previously had three, and they disagreed on malformed

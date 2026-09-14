@@ -13,8 +13,8 @@
     "@meetai/core": "workspace:*",
     "@meetai/ingestion": "workspace:*",
     "@meetai/memory": "workspace:*",
-    "@meetai/retrieval": "workspace:*",
-    "qwen-proxy": "workspace:*"
+    "@meetai/proxy": "workspace:*",
+    "@meetai/retrieval": "workspace:*"
   },
   "devDependencies": {
     "@meetai/tsconfig": "workspace:*",
