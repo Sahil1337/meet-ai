@@ -21,7 +21,7 @@ packages/ingestion  packages/ai  packages/memory  packages/retrieval
                         packages/core            zod only
                 (domain model · contracts · transcript grammar)
 
-packages/ai and packages/retrieval may also import qwen-proxy/client
+packages/ai and packages/retrieval may also import @meetai/proxy/client
 (apps/proxy's published client — a maintained contract, not an app internal).
 ```
 
@@ -87,7 +87,7 @@ every prompt, every tool, and the eval harness that measures extraction.
 embed, or search. Must not put a prompt anywhere but `src/prompts/`.
 
 **Consumes:** `ExtractionRequest`, `EvidenceBundle`, the transcript grammar
-(core); `qwen-proxy/client`.
+(core); `@meetai/proxy/client`.
 
 **Provides:** `Extractor`, `Answerer`. The output schema the model is
 constrained to *is* `ExtractedProposition` from core — derived, not copied.
@@ -125,9 +125,9 @@ the proposition text; depend on memory or ai.
 **Consumes:** `Proposition` (core) — `id`, `text`, and the filterable fields.
 
 **Provides:** `Embedder`, `Indexer`, `Searcher`. Returns proposition ids and
-scores. Ids as the currency are what keep the vector-store decision
-deferrable: pgvector, a file, or an in-process array are all invisible to
-the API.
+scores. Ids as the currency are what kept the vector-store decision
+deferrable: it is pgvector now, and the in-process array and the JSON file
+that came before it were invisible to the API in exactly the same way.
 
 ### Unit 5 — Frontend (`apps/web`)
 
@@ -231,7 +231,7 @@ window. That is a constraint the whole design bends around:
   compact answer, so the main conversation never grows by raw transcript.
 - Retrieval, embeddings, memory and state never run there. The embedding
   model runs as its own service on a different machine.
-- Units 2 and 4 may call it through `qwen-proxy/client` (a dependency-free
+- Units 2 and 4 may call it through `@meetai/proxy/client` (a dependency-free
   client published through the proxy's `exports` map). Unit 3 has no
   reason to; unit 1 reaches it only through `Extractor`/`Answerer`; unit 5
   never.
@@ -242,19 +242,35 @@ published repository that happens to be mirrored in.
 
 ## 7. Dependencies
 
-One runtime dependency was added: **zod** (`packages/core`, `packages/ai`).
-It is the mechanism by which core is a contract rather than a suggestion —
-schemas validate request bodies, tool arguments, and the model's
-submissions at the boundaries — and it is the source the tool JSON Schemas
-are derived from. It was already in the lockfile via the proxy.
+Two runtime dependencies were added.
+
+**zod** (`packages/core`, `packages/ai`). It is the mechanism by which core
+is a contract rather than a suggestion — schemas validate request bodies,
+tool arguments, and the model's submissions at the boundaries — and it is
+the source the tool JSON Schemas are derived from. It was already in the
+lockfile via the proxy.
+
+**`Bun.sql`** (`packages/retrieval` only) — built into the runtime, so it
+adds nothing to the lockfile. The index is real Postgres SQL — BM25 +
+vector, fused in the query — against a server at `DATABASE_URL`. That URL is
+required: the API, the retrieval eval and the tests all point at a real
+Postgres with `CREATE EXTENSION vector`.
+
+`@electric-sql/pglite` (Postgres compiled to WASM, pgvector bundled) held
+this slot first, so that no one needed a database installed. It was removed:
+the no-install path meant every machine ran against its own private corpus,
+which is exactly the thing an index is supposed to make shared. The SQL did
+not change when it went — it was written once for both from the start.
 
 Considered and not added:
 
 - **Express** (the old `apps/api/README.md` suggested it). Nine JSON
   endpoints do not need a framework; `Bun.serve` plus a 20-line matcher is
   the skeleton. Add it if middleware needs appear, and say why here.
-- **An ORM / a database driver.** The database is not chosen. Stores are
-  interfaces; the first implementation is `Map`s.
+- **An ORM / a database driver.** The database for *memory* is still not
+  chosen; its stores are interfaces and the first implementation is `Map`s.
+  The *index* now speaks Postgres, and `Bun.sql` is the driver there — no
+  ORM; the SQL is written once, in one file.
 - **BullMQ / Redis.** One API process and a GPU that serves two requests
   at a time do not need a distributed queue. An in-process queue is the
   prototype; the job record is the contract, so a real queue can replace it
@@ -266,7 +282,8 @@ Considered and not added:
 
 ```
 Nitro 5 (Debian, RTX 3050 4 GB)     apps/proxy  →  Ollama / Qwen3.5-4B
-Mac (M5, 16 GB)                     apps/api, the embedding service, the database when chosen
+Mac (M5, 16 GB)                     apps/api (the index runs embedded inside it by default, or in a
+                                    local Postgres when DATABASE_URL is set), the embedding service
 Browser                             apps/web (Vite dev server or a static build)
 ```
 
@@ -274,9 +291,14 @@ Each app has its own `.env`. There is no root `.env`.
 
 ## 9. Open decisions (need a human)
 
-1. **Database and vector store.** Deferred by design. The kickoff leaned
-   Postgres + pgvector; unit 3 decides after the in-memory version has run a
-   real meeting.
+1. **Database for memory.** The vector-store half is decided: retrieval
+   chose Postgres + pgvector for the index (unit 4's call, by its own
+   README's rule), on the Postgres server at `DATABASE_URL` — required, in
+   development too. What is still open is whether memory's four stores go
+   into the same Postgres — the kickoff's "claims and vectors in one
+   place". Recommendation: they should, so one `DATABASE_URL` serves both
+   and a proposition and its vector are one transaction away from each
+   other. Unit 3 decides after the in-memory version has run a real meeting.
 2. **Embedding model.** Unit 4 picks from the MTEB Retrieval column; the
    prior Gemini findings say 768-d and matched task types.
 3. **Who owns answer generation.** This document puts it in unit 2 (it owns

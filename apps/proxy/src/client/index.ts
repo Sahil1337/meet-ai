@@ -3,7 +3,7 @@
  * the LAN. The wire types come from ../shared/types.ts, the same contract the
  * server is checked against.
  *
- *   import { QwenProxyClient } from 'qwen-proxy/client';   // or a relative path
+ *   import { QwenProxyClient } from '@meetai/proxy/client';   // or a relative path
  *   const qwen = new QwenProxyClient({ baseUrl: 'http://proxy-host:8000', apiKey: '...' });
  *
  * It speaks the OpenAI chat-completions shape plus the proxy's extensions

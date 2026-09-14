@@ -7,14 +7,7 @@
 export { HttpEmbedder } from "./embedder.ts";
 export { GeminiEmbedder, type GeminiEmbedderOptions } from "./embedders/gemini.ts";
 export { PropositionIndexer } from "./indexer.ts";
-export { VectorSearcher, type VectorSearcherOptions } from "./searcher.ts";
-export {
-  idFor,
-  JsonVectorStore,
-  type Metadata,
-  type SearchOptions,
-  type StoredRecord,
-  type StoreFile,
-  type StoreHit,
-} from "./store.ts";
+export { HybridSearcher, type HybridSearcherOptions } from "./searcher.ts";
+export { openIndex } from "./store/pg.ts";
+export type { IndexedRecord, IndexHit, IndexTarget, OpenIndexOptions, SearchMode, VectorIndex } from "./store/types.ts";
 export { cosine, dot, norm, normalize, type Vector } from "./vectors.ts";

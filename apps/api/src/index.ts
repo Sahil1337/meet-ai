@@ -9,7 +9,7 @@ import type { ErrorResponse } from "@meetai/core";
 import { createContainer } from "./container.ts";
 import { matchRoute, NotImplemented } from "./routes.ts";
 
-const container = createContainer();
+const container = await createContainer();
 
 function error(status: number, code: string, message: string): Response {
   const body: ErrorResponse = { error: { code, message } };

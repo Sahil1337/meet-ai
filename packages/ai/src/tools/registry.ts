@@ -11,7 +11,7 @@
  * place (the proxy client) and is not duplicated here.
  */
 
-import type { Tool, ToolCall } from "qwen-proxy/types";
+import type { Tool, ToolCall } from "@meetai/proxy/types";
 import type { ToolContext } from "./context.ts";
 import { toProxyTool, type ToolDefinition } from "./define.ts";
 

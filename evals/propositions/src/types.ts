@@ -5,8 +5,8 @@
  */
 
 import type { ExtractedProposition, ExtractionRequest } from "@meetai/core";
-import type { QwenProxyClient } from "qwen-proxy/client";
-import type { Mode, ToolChoice } from "qwen-proxy/types";
+import type { QwenProxyClient } from "@meetai/proxy/client";
+import type { Mode, ToolChoice } from "@meetai/proxy/types";
 
 export type Fixture = {
   name: string;

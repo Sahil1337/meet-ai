@@ -37,7 +37,12 @@ PROXY_BASE_URL=https://ai.sahil1337.com
 PROXY_API_KEY=
 EMBEDDER_BASE_URL=http://127.0.0.1:8100
 WINDOW_SECONDS=150
+DATABASE_URL=postgres://localhost/meetai
 ```
+
+The index is Postgres + pgvector, and `DATABASE_URL` is required — a
+`postgres://` URL to a server with the `vector` extension. The same one in
+development as anywhere else; there is no embedded fallback.
 
 ## What this app must not do
 

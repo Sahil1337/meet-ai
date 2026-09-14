@@ -5,8 +5,9 @@
  * @meetai/memory from inside @meetai/ingestion, the import belongs here
  * instead.
  *
- * Wiring is real; the things being wired are stubs until their owners fill
- * them in. `loadConfig` throws today, so `createContainer` throws today.
+ * Wiring is real; most of the things being wired are stubs until their
+ * owners fill them in. Opening the index is async (the embedded database
+ * boots), which is why this is the one async step at startup.
  */
 
 import { createAnswerer, createExtractor } from "@meetai/ai";
@@ -31,8 +32,8 @@ import {
   InMemoryProjectStore,
   InMemoryPropositionStore,
 } from "@meetai/memory";
-import { HttpEmbedder, JsonVectorStore, PropositionIndexer, VectorSearcher } from "@meetai/retrieval";
-import { QwenProxyClient } from "qwen-proxy/client";
+import { HttpEmbedder, HybridSearcher, openIndex, PropositionIndexer } from "@meetai/retrieval";
+import { QwenProxyClient } from "@meetai/proxy/client";
 
 export type Container = {
   config: Config;
@@ -48,15 +49,19 @@ export type Container = {
   searcher: Searcher;
 };
 
-export function createContainer(): Container {
+export async function createContainer(): Promise<Container> {
   const config = loadConfig();
   const proxy = new QwenProxyClient({ baseUrl: config.proxyBaseUrl, apiKey: config.proxyApiKey });
   // Model name and dimensions are retrieval's decision; placeholders until unit 4 picks one.
   const embedder = new HttpEmbedder(config.embedderBaseUrl, "unchosen", 768);
-  // A JSON file is the index until the database question is settled. Swapping
-  // it for pgvector replaces these two lines and nothing else: everyone
-  // upstream only ever sees `Indexer` and `Searcher`.
-  const index = JsonVectorStore.open(config.indexPath, embedder.model, embedder.dimensions);
+  // The index is Postgres + pgvector at `DATABASE_URL`, in development too.
+  // Opened here and nowhere else — everyone upstream only ever sees `Indexer`
+  // and `Searcher`.
+  const index = await openIndex({
+    url: config.databaseUrl,
+    model: embedder.model,
+    dimensions: embedder.dimensions,
+  });
   return {
     config,
     projects: new InMemoryProjectStore(),
@@ -68,6 +73,6 @@ export function createContainer(): Container {
     extractor: createExtractor(proxy),
     answerer: createAnswerer(proxy),
     indexer: new PropositionIndexer(embedder, index),
-    searcher: new VectorSearcher(embedder, index),
+    searcher: new HybridSearcher(embedder, index),
   };
 }
