@@ -4,7 +4,7 @@
 
 **Boundary:** transcript window in, propositions out; retrieved evidence in,
 cited answer out. This is the only package that sends prompts to the model.
-It talks to the proxy through `qwen-proxy/client` and to nothing else: no
+It talks to the proxy through `@meetai/proxy/client` and to nothing else: no
 database, no vector index, no HTTP server, no file system.
 
 ## Layout

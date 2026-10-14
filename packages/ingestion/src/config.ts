@@ -29,8 +29,12 @@ export type Config = {
   embedderBaseUrl: string;
   /** Extraction window target in seconds; see windows.ts. */
   windowSeconds: number;
-  /** Where the JSON vector index lives, until a database replaces it. */
-  indexPath: string;
+  /**
+   * The index: a Postgres server with the `vector` extension. Required, and the
+   * same one in development as anywhere else — the embedded database was easy
+   * to start but gave every machine its own private corpus.
+   */
+  databaseUrl: string;
 };
 
 function readEnv(runtimeEnv: Record<string, string | undefined>) {
@@ -42,7 +46,8 @@ function readEnv(runtimeEnv: Record<string, string | undefined>) {
       PROXY_API_KEY: z.string().min(1).optional(),
       EMBEDDER_BASE_URL: z.url(),
       WINDOW_SECONDS: z.coerce.number().int().positive().default(150),
-      INDEX_PATH: z.string().min(1).default("data/index.json"),
+      /** Required: the index is a real Postgres, in development too. */
+      DATABASE_URL: z.string().regex(/^postgres(ql)?:\/\//, "expected a postgres:// URL"),
     },
     runtimeEnv,
     // "" counts as "unset" so .env templates can leave values blank.
@@ -58,6 +63,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     proxyApiKey: e.PROXY_API_KEY,
     embedderBaseUrl: e.EMBEDDER_BASE_URL,
     windowSeconds: e.WINDOW_SECONDS,
-    indexPath: e.INDEX_PATH,
+    databaseUrl: e.DATABASE_URL,
   };
 }

@@ -1,4 +1,4 @@
 {
   "extends": "@meetai/tsconfig/base.json",
-  "include": ["src"]
+  "include": ["src", "test"]
 }

@@ -12,8 +12,8 @@
     "@meetai/ai": "workspace:*",
     "@meetai/core": "workspace:*",
     "@meetai/ingestion": "workspace:*",
+    "@meetai/proxy": "workspace:*",
     "@t3-oss/env-core": "^0.13.11",
-    "qwen-proxy": "workspace:*",
     "zod": "^4.5.4"
   },
   "devDependencies": {

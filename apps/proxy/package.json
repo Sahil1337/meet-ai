@@ -1,5 +1,5 @@
 {
-  "name": "qwen-proxy",
+  "name": "@meetai/proxy",
   "version": "0.1.0",
   "description": "Minimal OpenAI-compatible proxy over Ollama for Qwen3.5: adaptive thinking, robust tool calls, validated structured output",
   "scripts": {

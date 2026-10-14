@@ -15,8 +15,8 @@ import {
   type ExtractionResult,
   type Extractor,
 } from "@meetai/core";
-import type { QwenProxyClient } from "qwen-proxy/client";
-import type { ChatChunk, ChatCompletion, ChatMessage, Mode, ToolCall, ToolChoice } from "qwen-proxy/types";
+import type { QwenProxyClient } from "@meetai/proxy/client";
+import type { ChatChunk, ChatCompletion, ChatMessage, Mode, ToolCall, ToolChoice } from "@meetai/proxy/types";
 import { EXTRACTION_PROMPT } from "./prompts/extraction.ts";
 import { toProxyTool } from "./tools/define.ts";
 import { extractionTools, submitPropositionsTool } from "./tools/index.ts";

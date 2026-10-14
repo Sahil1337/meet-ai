@@ -5,8 +5,8 @@
  */
 
 import type { TranscriptLine } from "@meetai/core";
-import type { QwenProxyClient } from "qwen-proxy/client";
-import type { Mode } from "qwen-proxy/types";
+import type { QwenProxyClient } from "@meetai/proxy/client";
+import type { Mode } from "@meetai/proxy/types";
 
 export type ToolContext = {
   /** For tools that make their own isolated model call. */

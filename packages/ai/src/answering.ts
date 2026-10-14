@@ -12,7 +12,7 @@
  */
 
 import type { Answerer } from "@meetai/core";
-import type { QwenProxyClient } from "qwen-proxy/client";
+import type { QwenProxyClient } from "@meetai/proxy/client";
 
 export const ANSWERER_VERSION = "qwen3.5-4b/answering-v0";
 

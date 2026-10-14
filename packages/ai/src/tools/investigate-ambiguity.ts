@@ -40,8 +40,8 @@
 
 import { z } from "zod";
 import { formatTranscriptLine, lineTimestampMs, type TranscriptLine } from "@meetai/core";
-import type { QwenProxyClient } from "qwen-proxy/client";
-import type { ChatMessage, Mode } from "qwen-proxy/types";
+import type { QwenProxyClient } from "@meetai/proxy/client";
+import type { ChatMessage, Mode } from "@meetai/proxy/types";
 import { RESOLVER_PROMPT } from "../prompts/resolver.ts";
 import { defineTool } from "./define.ts";
 

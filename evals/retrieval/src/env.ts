@@ -17,16 +17,23 @@ export function loadEvalEnv(runtimeEnv: Record<string, string | undefined> = pro
 
       /** Extracted claims to index. Defaults to the checked-in kickoff set. */
       EVAL_CLAIMS: z.string().min(1).optional(),
-      /** Where the built index is cached, so re-runs cost no embedding calls. */
-      EVAL_STORE: z.string().min(1).default("out/index.json"),
-      /** Re-embed even if the cached index already holds the claims. */
+      /**
+       * Required: the eval indexes into a real Postgres with pgvector, the same
+       * one a local API run uses. There is no embedded fallback — a run that
+       * quietly built its own throwaway index would report numbers nobody else
+       * can reproduce.
+       */
+      DATABASE_URL: z.string().regex(/^postgres(ql)?:\/\//, "expected a postgres:// URL"),
+      /** Re-embed even if the cached index already holds the claims. Also the way past a model or width change. */
       EVAL_REINDEX: z.enum(["true", "false", "1", "0"]).transform((v) => v === "true" || v === "1").default(false),
+      /** Which search legs to run: one of them, or `all` for a comparison table. */
+      EVAL_MODE: z.enum(["vector", "keyword", "hybrid", "all"]).default("all"),
 
       EVAL_TOP_K: z.coerce.number().int().positive().default(5),
       /**
-       * Score floor. Out-of-domain queries are graded on whether *nothing*
-       * clears this, so it is the knob that decides "the corpus cannot answer
-       * that" versus a confident wrong answer.
+       * Cosine floor, applied in every mode. Out-of-domain queries are graded
+       * on whether *nothing* clears this, so it is the knob that decides "the
+       * corpus cannot answer that" versus a confident wrong answer.
        */
       EVAL_MIN_SCORE: z.coerce.number().default(0.65),
     },
